@@ -14,6 +14,7 @@ const REQUIRED_COLLECTIONS = [
   'users',
   'birthdays',
   'blood_donors',
+  'donation_locations',
   'presentation_topics',
   'presentation_slots',
   'presentation_bookings',
@@ -39,6 +40,10 @@ function birthdaysCollection() {
 
 function bloodDonorsCollection() {
   return getDb().collection('blood_donors');
+}
+
+function donationLocationsCollection() {
+  return getDb().collection('donation_locations');
 }
 
 function presentationTopicsCollection() {
@@ -106,6 +111,8 @@ async function ensureIndexes() {
     bloodDonorsCollection().createIndex({ normalizedPhoneNumber: 1 }),
     bloodDonorsCollection().createIndex({ location: 1 }),
     bloodDonorsCollection().createIndex({ nextEligibleDonationDate: 1 }),
+    donationLocationsCollection().createIndex({ normalizedName: 1 }, { unique: true }),
+    donationLocationsCollection().createIndex({ active: 1, name: 1 }),
     presentationTopicsCollection().createIndex({ isAssigned: 1, createdAt: 1 }),
     presentationTopicsCollection().createIndex({ assignedTo: 1 }),
     presentationSlotsCollection().createIndex({ startAt: 1 }, { unique: true }),
@@ -225,6 +232,7 @@ module.exports = {
   birthdaysCollection,
   connectToDatabase,
   DATABASE_NAME,
+  donationLocationsCollection,
   getDb,
   normalizeName,
   now,

@@ -3,6 +3,7 @@ export const pages = {
   bloodDrive: 'blood-drive',
   eligibleDonors: 'eligible-donors',
   repository: 'repository',
+  donationLocations: 'donation-locations',
   presentations: 'presentations'
 };
 
@@ -12,6 +13,7 @@ const routeToPage = {
   'blood-drive': pages.bloodDrive,
   'eligible-donors': pages.eligibleDonors,
   repository: pages.repository,
+  'donation-locations': pages.donationLocations,
   presentations: pages.presentations
 };
 

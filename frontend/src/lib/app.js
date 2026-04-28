@@ -2,6 +2,14 @@ export const tokenKey = 'central_website_token';
 
 const productionApiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
 
+function resolveApiUrl(path) {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+
+  return `${productionApiBaseUrl}${path}`;
+}
+
 export const months = [
   { value: '01', label: 'January' },
   { value: '02', label: 'February' },
@@ -41,6 +49,11 @@ export const emptyBloodDriveForm = {
   notes: ''
 };
 
+export const emptyDonationLocation = {
+  name: '',
+  active: true
+};
+
 export const emptyPresentationTopic = {
   title: '',
   description: ''
@@ -74,9 +87,7 @@ const sessionExpiryErrors = new Set([
 
 export async function api(path, { token, method = 'GET', body } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  const requestUrl = path.startsWith('http://') || path.startsWith('https://')
-    ? path
-    : `${productionApiBaseUrl}${path}`;
+  const requestUrl = resolveApiUrl(path);
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -113,6 +124,33 @@ export async function api(path, { token, method = 'GET', body } = {}) {
   }
 
   return response.json();
+}
+
+export async function downloadFile(path, { token, filename = 'download' } = {}) {
+  const headers = {};
+  const requestUrl = resolveApiUrl(path);
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(requestUrl, { headers });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const message = payload.error || `Request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
 }
 
 export function splitBirthdate(value) {
@@ -168,6 +206,18 @@ export function formatDateTime(value) {
   } catch {
     return value;
   }
+}
+
+export function formatCompactDate(value) {
+  if (!value) return '—';
+
+  const normalized = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    const [year, month, day] = normalized.split('-');
+    return `${day}/${month}/${year}`;
+  }
+
+  return normalized;
 }
 
 export function addMinutesToDateTimeLocal(value, minutes) {

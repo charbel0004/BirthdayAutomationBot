@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   api,
   formatBirthdayForDisplay,
+  formatCompactDate,
   formatDateTime,
   getDaysUntilBirthday,
   months,
@@ -398,6 +399,7 @@ export function BirthdayOverlay({ isOpen, birthdate, onChange, onClose, onSubmit
 export function BloodDriveOverlay({
   isOpen,
   form,
+  activeLocations,
   lookupQuery,
   lookupResults,
   selectedDonor,
@@ -472,7 +474,12 @@ export function BloodDriveOverlay({
           </label>
           <label>
             Donation day location
-            <input value={form.location} onChange={(event) => onChange('location', event.target.value)} placeholder="Enter today&apos;s donation location" required />
+            <select value={form.location} onChange={(event) => onChange('location', event.target.value)} required>
+              <option value="">Select an active location</option>
+              {activeLocations.map((location) => (
+                <option key={location.id} value={location.name}>{location.name}</option>
+              ))}
+            </select>
           </label>
           <label>
             Notes / comments
@@ -486,7 +493,7 @@ export function BloodDriveOverlay({
   );
 }
 
-export function DonorProspectOverlay({ isOpen, draft, setDraft, onClose, onSubmit }) {
+export function DonorProspectOverlay({ isOpen, draft, setDraft, onClose, onSubmit, error }) {
   useEffect(() => {
     if (!isOpen) return undefined;
 
@@ -529,6 +536,7 @@ export function DonorProspectOverlay({ isOpen, draft, setDraft, onClose, onSubmi
             Initial notes
             <textarea value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
           </label>
+          {error ? <div className="error-banner">{error}</div> : null}
           <button type="submit">Add To Call Center List</button>
         </form>
       </div>
@@ -663,39 +671,46 @@ export function DonorRow({ donor, onSave, onDelete, editable }) {
   };
 
   return (
-    <tr>
-      <td>{editable ? <input value={draft.firstName} onChange={(event) => setDraft({ ...draft, firstName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : donor.firstName}</td>
-      <td>{editable ? <input value={draft.lastName} onChange={(event) => setDraft({ ...draft, lastName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : donor.lastName}</td>
-      <td>{donor.age}</td>
-      <td>{editable ? <input type="date" value={draft.dateOfBirth} onChange={(event) => setDraft({ ...draft, dateOfBirth: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : donor.dateOfBirth}</td>
-      <td>{editable ? <input value={draft.phoneNumber} onChange={(event) => setDraft({ ...draft, phoneNumber: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : donor.phoneNumber}</td>
-      <td>{editable ? <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : donor.location}</td>
-      <td>{(donor.locationHistory || []).length ? donor.locationHistory.join(', ') : donor.location}</td>
-      <td>{donor.lastDonationDate || 'Not donated yet'}</td>
-      <td>{saving ? 'Saving...' : donor.lastUpdatedDate}</td>
-      <td>{error ? <span className="small-error">{error}</span> : donor.updatedByName}</td>
-      <td>{hasChanges && !saving ? 'Unsaved changes' : donor.nextEligibleDonationDate}</td>
+    <tr className="repository-table-row">
+      <td>{editable ? <input value={draft.firstName} onChange={(event) => setDraft({ ...draft, firstName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.firstName}</span>}</td>
+      <td>{editable ? <input value={draft.lastName} onChange={(event) => setDraft({ ...draft, lastName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.lastName}</span>}</td>
+      <td><span className="repository-cell-value repository-cell-value-center">{donor.age}</span></td>
+      <td>{editable ? <input type="date" value={draft.dateOfBirth} onChange={(event) => setDraft({ ...draft, dateOfBirth: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{formatCompactDate(donor.dateOfBirth)}</span>}</td>
+      <td>{editable ? <input value={draft.phoneNumber} onChange={(event) => setDraft({ ...draft, phoneNumber: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.phoneNumber}</span>}</td>
+      <td>{editable ? <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.location}</span>}</td>
+      <td><span className="repository-cell-value">{donor.lastDonationDate ? formatCompactDate(donor.lastDonationDate) : 'Not donated yet'}</span></td>
+      <td><span className="repository-cell-value">{saving ? 'Saving...' : formatCompactDate(donor.lastUpdatedDate)}</span></td>
+      <td>{error ? <span className="small-error repository-cell-value">{error}</span> : <span className="repository-cell-value">{donor.updatedByName}</span>}</td>
+      <td><span className="repository-cell-value">{hasChanges && !saving ? 'Unsaved changes' : formatCompactDate(donor.nextEligibleDonationDate)}</span></td>
     </tr>
   );
 }
 
 export function DonorRepositoryCard({ donor }) {
+  const statusLabel = donor.lastDonationDate ? 'Previous donor' : 'Interested donor';
+  const eligibleLabel = donor.nextEligibleDonationDate ? `Eligible ${formatCompactDate(donor.nextEligibleDonationDate)}` : 'No eligibility date';
   const rows = [
     ['Age', donor.age ?? '—'],
-    ['Date of birth', donor.dateOfBirth || '—'],
+    ['Date of birth', formatCompactDate(donor.dateOfBirth)],
     ['Phone', donor.phoneNumber || '—'],
     ['Latest location', donor.location || '—'],
-    ['All locations', (donor.locationHistory || []).length ? donor.locationHistory.join(', ') : (donor.location || '—')],
-    ['Last donation', donor.lastDonationDate || 'Not donated yet'],
-    ['Last update', donor.lastUpdatedDate || '—'],
+    ['Last donation', donor.lastDonationDate ? formatCompactDate(donor.lastDonationDate) : 'Not donated yet'],
+    ['Last update', formatCompactDate(donor.lastUpdatedDate)],
     ['Updated by', donor.updatedByName || '—'],
-    ['Next eligible', donor.nextEligibleDonationDate || '—']
+    ['Next eligible', formatCompactDate(donor.nextEligibleDonationDate)]
   ];
 
   return (
     <article className="repository-card">
       <div className="repository-card-head">
-        <h3>{donor.fullName || `${donor.firstName} ${donor.lastName}`.trim()}</h3>
+        <div>
+          <h3>{donor.fullName || `${donor.firstName} ${donor.lastName}`.trim()}</h3>
+          <p>{donor.phoneNumber || 'No phone number recorded'}</p>
+        </div>
+        <div className="repository-card-badges">
+          <span className="repository-badge">{statusLabel}</span>
+          <span className="repository-badge repository-badge-soft">{eligibleLabel}</span>
+        </div>
       </div>
       <div className="repository-card-grid">
         {rows.map(([label, value]) => (

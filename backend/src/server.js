@@ -8,6 +8,7 @@ const {
   birthdaysCollection,
   connectToDatabase,
   DATABASE_NAME,
+  donationLocationsCollection,
   normalizeName,
   now,
   presentationBookingsCollection,
@@ -126,6 +127,15 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function escapeXml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 function normalizePhoneNumber(value) {
   return String(value || '').replace(/\D+/g, '');
 }
@@ -208,6 +218,16 @@ function sanitizeBloodDonor(entry) {
     updatedByName: entry.updatedByName,
     nextEligibleDonationDate: entry.nextEligibleDonationDate,
     isEligible: Boolean(entry.isEligible)
+  };
+}
+
+function sanitizeDonationLocation(location) {
+  return {
+    id: String(location._id),
+    name: location.name,
+    active: location.active !== false,
+    createdAt: location.createdAt ? formatDateTime(location.createdAt) : null,
+    updatedAt: location.updatedAt ? formatDateTime(location.updatedAt) : null
   };
 }
 
@@ -334,12 +354,21 @@ async function getBloodDonorById(id) {
 async function findExistingBloodDonor({ firstName, lastName, dateOfBirth, phoneNumber, excludeId = null }) {
   const normalizedFullName = normalizeName(`${firstName} ${lastName}`);
   const normalizedPhone = normalizePhoneNumber(phoneNumber);
+  const trimmedPhone = String(phoneNumber || '').trim();
+  const matchClauses = [
+    { normalizedFullName, dateOfBirth: formatDateOnly(dateOfBirth) }
+  ];
+
+  if (normalizedPhone) {
+    matchClauses.push({ normalizedPhoneNumber: normalizedPhone });
+  }
+
+  if (trimmedPhone) {
+    matchClauses.push({ phoneNumber: trimmedPhone });
+  }
+
   const query = {
-    $or: [
-      { normalizedPhoneNumber: normalizedPhone },
-      { phoneNumber: String(phoneNumber || '').trim() },
-      { normalizedFullName, dateOfBirth: formatDateOnly(dateOfBirth) }
-    ]
+    $or: matchClauses
   };
 
   if (excludeId) {
@@ -1079,6 +1108,151 @@ app.get('/api/blood-drive/stats', async (req, res) => {
   });
 });
 
+app.get('/api/blood-drive/locations', async (req, res) => {
+  const activeOnly = String(req.query.activeOnly || 'true') !== 'false';
+  const query = activeOnly ? { active: true } : {};
+  const locations = await donationLocationsCollection().find(query).sort({ active: -1, name: 1 }).toArray();
+  res.json(locations.map(sanitizeDonationLocation));
+});
+
+app.post('/api/blood-drive/locations', requireRole('admin'), async (req, res) => {
+  const { name, active = true } = req.body || {};
+  const trimmedName = String(name || '').trim();
+
+  if (!trimmedName) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+
+  const payload = {
+    name: trimmedName,
+    normalizedName: normalizeName(trimmedName),
+    active: Boolean(active),
+    createdAt: now(),
+    updatedAt: now()
+  };
+
+  try {
+    const result = await donationLocationsCollection().insertOne(payload);
+    return res.status(201).json(sanitizeDonationLocation({ ...payload, _id: result.insertedId }));
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'This donation location already exists' });
+    }
+
+    throw error;
+  }
+});
+
+app.put('/api/blood-drive/locations/:id', requireRole('admin'), async (req, res) => {
+  const locationId = toObjectId(req.params.id);
+
+  if (!locationId) {
+    return res.status(400).json({ error: 'Invalid location id' });
+  }
+
+  const existing = await donationLocationsCollection().findOne({ _id: locationId });
+
+  if (!existing) {
+    return res.status(404).json({ error: 'Donation location not found' });
+  }
+
+  const { name, active } = req.body || {};
+  const updates = { updatedAt: now() };
+
+  if (typeof name === 'string' && name.trim()) {
+    const trimmedName = name.trim();
+    const collision = await donationLocationsCollection().findOne({
+      normalizedName: normalizeName(trimmedName),
+      _id: { $ne: locationId }
+    });
+
+    if (collision) {
+      return res.status(409).json({ error: 'This donation location already exists' });
+    }
+
+    updates.name = trimmedName;
+    updates.normalizedName = normalizeName(trimmedName);
+  }
+
+  if (typeof active === 'boolean') {
+    updates.active = active;
+  }
+
+  await donationLocationsCollection().updateOne({ _id: locationId }, { $set: updates });
+  const updated = await donationLocationsCollection().findOne({ _id: locationId });
+  res.json(sanitizeDonationLocation(updated));
+});
+
+app.get('/api/blood-drive/donors/export', requireRole('admin'), async (req, res) => {
+  const requestedDate = String(req.query.date || formatDateOnly(now())).trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    return res.status(400).json({ error: 'date must use YYYY-MM-DD format' });
+  }
+
+  const donors = await bloodDonorsCollection()
+    .find({ lastDonationDate: requestedDate })
+    .sort({ lastName: 1, firstName: 1 })
+    .toArray();
+
+  const rows = donors.map((donor) => ({
+    fullName: `${donor.firstName || ''} ${donor.lastName || ''}`.trim(),
+    firstName: donor.firstName || '',
+    lastName: donor.lastName || '',
+    age: calculateAgeFromDateOfBirth(donor.dateOfBirth) ?? '',
+    dateOfBirth: donor.dateOfBirth || '',
+    phoneNumber: donor.phoneNumber || '',
+    location: donor.location || '',
+    donationDate: donor.lastDonationDate || '',
+    updatedByName: donor.updatedByName || '',
+    notes: donor.notes || ''
+  }));
+
+  const headerCells = [
+    'Full Name',
+    'First Name',
+    'Last Name',
+    'Age',
+    'Date of Birth',
+    'Phone Number',
+    'Location',
+    'Donation Date',
+    'Updated By',
+    'Notes'
+  ].map((label) => `<Cell><Data ss:Type="String">${escapeXml(label)}</Data></Cell>`).join('');
+
+  const bodyRows = rows.map((row) => `
+    <Row>
+      <Cell><Data ss:Type="String">${escapeXml(row.fullName)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.firstName)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.lastName)}</Data></Cell>
+      <Cell><Data ss:Type="${row.age === '' ? 'String' : 'Number'}">${escapeXml(row.age)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.dateOfBirth)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.phoneNumber)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.location)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.donationDate)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.updatedByName)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(row.notes)}</Data></Cell>
+    </Row>`).join('');
+
+  const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="Donations">
+    <Table>
+      <Row>${headerCells}</Row>${bodyRows}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+
+  res.setHeader('Content-Type', 'application/vnd.ms-excel');
+  res.setHeader('Content-Disposition', `attachment; filename="blood-donations-${requestedDate}.xls"`);
+  res.send(workbook);
+});
+
 app.get('/api/blood-drive/my-record', async (req, res) => {
   const donor = await bloodDonorsCollection().findOne({ userId: req.account._id });
 
@@ -1092,8 +1266,11 @@ app.get('/api/blood-drive/my-record', async (req, res) => {
 
 app.post('/api/blood-drive/donors/prospects', async (req, res) => {
   const { firstName, lastName, dateOfBirth, phoneNumber, notes } = req.body || {};
+  const trimmedFirstName = String(firstName || '').trim();
+  const trimmedLastName = String(lastName || '').trim();
+  const trimmedPhoneNumber = String(phoneNumber || '').trim();
 
-  if (!firstName || !lastName || !phoneNumber || !dateOfBirth) {
+  if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth) {
     return res
       .status(400)
       .json({ error: 'firstName, lastName, dateOfBirth, and phoneNumber are required' });
@@ -1105,7 +1282,12 @@ app.post('/api/blood-drive/donors/prospects', async (req, res) => {
     return res.status(400).json({ error: 'dateOfBirth must produce an age between 18 and 75' });
   }
 
-  const duplicate = await findExistingBloodDonor({ firstName, lastName, dateOfBirth, phoneNumber });
+  const duplicate = await findExistingBloodDonor({
+    firstName: trimmedFirstName,
+    lastName: trimmedLastName,
+    dateOfBirth,
+    phoneNumber: trimmedPhoneNumber
+  });
   if (duplicate) {
     return res.status(409).json({ error: 'This donor already exists in the repository. Use the existing donor record instead of adding a new one.' });
   }
@@ -1114,12 +1296,12 @@ app.post('/api/blood-drive/donors/prospects', async (req, res) => {
   const today = formatDateOnly(currentDate);
   const payload = {
     userId: null,
-    firstName: String(firstName).trim(),
-    lastName: String(lastName).trim(),
-    normalizedFullName: normalizeName(`${firstName} ${lastName}`),
+    firstName: trimmedFirstName,
+    lastName: trimmedLastName,
+    normalizedFullName: normalizeName(`${trimmedFirstName} ${trimmedLastName}`),
     dateOfBirth: formatDateOnly(dateOfBirth),
-    phoneNumber: String(phoneNumber).trim(),
-    normalizedPhoneNumber: normalizePhoneNumber(phoneNumber),
+    phoneNumber: trimmedPhoneNumber,
+    normalizedPhoneNumber: normalizePhoneNumber(trimmedPhoneNumber),
     location: '',
     locationHistory: [],
     contacted: false,

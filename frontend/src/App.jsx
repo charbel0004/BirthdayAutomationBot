@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   api,
   calculatePresentationTotalScore,
+  downloadFile,
   emptyBloodDriveForm,
+  emptyDonationLocation,
   emptyPresentationCriterion,
   emptyPresentationScoreForm,
   emptyPresentationSlot,
@@ -64,7 +66,10 @@ export default function App() {
   const [allDonors, setAllDonors] = useState([]);
   const [repositoryFilters, setRepositoryFilters] = useState({ name: '', location: '' });
   const [repositoryDonorDraft, setRepositoryDonorDraft] = useState(emptyRepositoryDonor);
+  const [repositoryDonorError, setRepositoryDonorError] = useState('');
+  const [donationLocationDraft, setDonationLocationDraft] = useState(emptyDonationLocation);
   const [donorStats, setDonorStats] = useState(createEmptyDonorStats);
+  const [donationLocations, setDonationLocations] = useState([]);
   const [presentationData, setPresentationData] = useState(() => createEmptyPresentationData(getCurrentYear()));
   const [presentationReport, setPresentationReport] = useState(createEmptyPresentationReport);
   const [presentationYear, setPresentationYear] = useState(getCurrentYear());
@@ -97,7 +102,7 @@ export default function App() {
     return `${path}?${params.toString()}`;
   };
 
-  const isBloodDrivePage = [pages.bloodDrive, pages.eligibleDonors, pages.repository].includes(page);
+  const isBloodDrivePage = [pages.bloodDrive, pages.eligibleDonors, pages.repository, pages.donationLocations].includes(page);
   const isPresentationPage = page === pages.presentations;
 
   const loadData = async () => {
@@ -148,6 +153,8 @@ export default function App() {
       setCollectionLookupResults([]);
       setSelectedCollectionDonor(null);
       setRepositoryDonorDraft(emptyRepositoryDonor);
+      setRepositoryDonorError('');
+      setDonationLocationDraft(emptyDonationLocation);
 
       if (isAdmin) {
         setUsers(payloads.users || []);
@@ -229,12 +236,24 @@ export default function App() {
     setMe((current) => (current ? { ...current, ...mePayload } : mePayload));
   };
 
-  const refreshBloodDrive = async ({ includeRepository = false } = {}) => {
-    const requests = [api('/api/blood-drive/stats', { token }), api(buildDonorQuery(donorFilters, true), { token })];
+  const refreshDonationLocations = async ({ includeAll = false } = {}) => {
+    const path = `/api/blood-drive/locations${includeAll ? '?activeOnly=false' : ''}`;
+    const payload = await api(path, { token });
+    setDonationLocations(payload);
+    return payload;
+  };
+
+  const refreshBloodDrive = async ({ includeRepository = false, includeAllLocations = false } = {}) => {
+    const requests = [
+      api('/api/blood-drive/stats', { token }),
+      api(buildDonorQuery(donorFilters, true), { token }),
+      api(`/api/blood-drive/locations${includeAllLocations ? '?activeOnly=false' : ''}`, { token })
+    ];
     if (includeRepository) requests.push(api(buildDonorQuery(repositoryFilters, false), { token }));
-    const [statsPayload, eligiblePayload, repositoryPayload] = await Promise.all(requests);
+    const [statsPayload, eligiblePayload, locationsPayload, repositoryPayload] = await Promise.all(requests);
     setDonorStats(statsPayload);
     setEligibleDonors(eligiblePayload);
+    setDonationLocations(locationsPayload);
     if (repositoryPayload) setAllDonors(repositoryPayload);
   };
 
@@ -276,6 +295,7 @@ export default function App() {
 
     const includeRepository = page === pages.repository;
     const includeEligible = page === pages.eligibleDonors;
+    const includeAllLocations = page === pages.donationLocations;
     const requests = [];
 
     if (page === pages.bloodDrive) {
@@ -289,6 +309,8 @@ export default function App() {
     if (includeRepository) {
       requests.push(api(buildDonorQuery(repositoryFilters, false), { token }).then(setAllDonors));
     }
+
+    requests.push(refreshDonationLocations({ includeAll: includeAllLocations }));
 
     Promise.all(requests).catch((err) => setError(err.message));
   }, [token, me, isBloodDrivePage, page]);
@@ -458,6 +480,21 @@ export default function App() {
     return updated;
   };
 
+  const exportBloodDriveDonations = async (date) => {
+    try {
+      setError('');
+      const params = new URLSearchParams();
+      if (date) params.set('date', date);
+      await downloadFile(`/api/blood-drive/donors/export?${params.toString()}`, {
+        token,
+        filename: `blood-donations-${date || 'today'}.xls`
+      });
+      showNotice('Donation export downloaded');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const markEligibleDonorAsDonated = (donor) => {
     selectCollectionDonor(donor);
     setBloodDriveError('');
@@ -466,16 +503,45 @@ export default function App() {
 
   const createRepositoryDonor = async (event) => {
     event.preventDefault();
-    setError('');
+    setRepositoryDonorError('');
     try {
       await api('/api/blood-drive/donors/prospects', { token, method: 'POST', body: repositoryDonorDraft });
       setRepositoryDonorDraft(emptyRepositoryDonor);
+      setRepositoryDonorError('');
       await refreshBloodDrive({ includeRepository: true });
       showNotice('Potential donor added');
       return true;
     } catch (err) {
-      setError(err.message);
+      setRepositoryDonorError(err.message);
       return false;
+    }
+  };
+
+  const createDonationLocation = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      await api('/api/blood-drive/locations', { token, method: 'POST', body: donationLocationDraft });
+      setDonationLocationDraft(emptyDonationLocation);
+      setDonationLocations(await api('/api/blood-drive/locations?activeOnly=false', { token }));
+      showNotice('Donation location added');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const toggleDonationLocation = async (location) => {
+    setError('');
+    try {
+      await api(`/api/blood-drive/locations/${location.id}`, {
+        token,
+        method: 'PUT',
+        body: { active: !location.active }
+      });
+      setDonationLocations(await api('/api/blood-drive/locations?activeOnly=false', { token }));
+      showNotice(`Location ${location.active ? 'disabled' : 'activated'}`);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -541,12 +607,22 @@ export default function App() {
 
       try {
         if (page === pages.bloodDrive) {
-          setDonorStats(await api('/api/blood-drive/stats', { token }));
+          const [statsPayload, locationPayload] = await Promise.all([
+            api('/api/blood-drive/stats', { token }),
+            api('/api/blood-drive/locations', { token })
+          ]);
+          setDonorStats(statsPayload);
+          setDonationLocations(locationPayload);
           return;
         }
 
         if (page === pages.eligibleDonors) {
-          setEligibleDonors(await api(buildDonorQuery(donorFilters, true), { token }));
+          const [eligiblePayload, locationPayload] = await Promise.all([
+            api(buildDonorQuery(donorFilters, true), { token }),
+            api('/api/blood-drive/locations', { token })
+          ]);
+          setEligibleDonors(eligiblePayload);
+          setDonationLocations(locationPayload);
           return;
         }
 
@@ -561,7 +637,17 @@ export default function App() {
             return;
           }
 
-          setAllDonors(await api(buildDonorQuery(repositoryFilters, false), { token }));
+          const [repositoryPayload, locationPayload] = await Promise.all([
+            api(buildDonorQuery(repositoryFilters, false), { token }),
+            api('/api/blood-drive/locations', { token })
+          ]);
+          setAllDonors(repositoryPayload);
+          setDonationLocations(locationPayload);
+          return;
+        }
+
+        if (page === pages.donationLocations) {
+          setDonationLocations(await api('/api/blood-drive/locations?activeOnly=false', { token }));
         }
       } catch (err) {
         setError(err.message);
@@ -815,9 +901,14 @@ export default function App() {
           setRepositoryFilters={setRepositoryFilters}
           repositoryDonorDraft={repositoryDonorDraft}
           setRepositoryDonorDraft={setRepositoryDonorDraft}
+          repositoryDonorError={repositoryDonorError}
+          donationLocationDraft={donationLocationDraft}
+          setDonationLocationDraft={setDonationLocationDraft}
           allDonors={allDonors}
+          donationLocations={donationLocations}
           isAdmin={isAdmin}
           onOpenCollection={() => {
+            refreshDonationLocations().catch((err) => setError(err.message));
             setBloodDriveForm(emptyBloodDriveForm);
             setBloodDriveError('');
             setCollectionLookupQuery('');
@@ -827,9 +918,13 @@ export default function App() {
           }}
           onOpenEligibleDonors={() => setPage(pages.eligibleDonors)}
           onOpenRepository={() => setPage(pages.repository)}
+          onOpenLocations={() => setPage(pages.donationLocations)}
+          onExportDonations={exportBloodDriveDonations}
           onSearchEligible={searchEligibleDonors}
           onSearchRepository={searchRepositoryDonors}
           onCreateRepositoryDonor={createRepositoryDonor}
+          onCreateDonationLocation={createDonationLocation}
+          onToggleDonationLocation={toggleDonationLocation}
           onSaveDonor={updateDonor}
           onSaveEligibleDonor={updateEligibleDonorCall}
           onMarkEligibleDonorAsDonated={markEligibleDonorAsDonated}
@@ -944,6 +1039,7 @@ export default function App() {
         <BloodDriveOverlay
           isOpen={bloodDriveOverlayOpen}
           form={bloodDriveForm}
+          activeLocations={donationLocations}
           onChange={(field, value) => setBloodDriveForm((current) => ({ ...current, [field]: value }))}
           lookupQuery={collectionLookupQuery}
           lookupResults={collectionLookupResults}

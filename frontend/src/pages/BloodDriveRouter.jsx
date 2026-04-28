@@ -1,6 +1,7 @@
 import {
   BloodDonorsRepositoryPage,
   BloodDrivePage,
+  DonationLocationsPage,
   EligibleDonorsPage
 } from './blood-drive';
 
@@ -14,14 +15,22 @@ export default function BloodDriveRouter({
   setRepositoryFilters,
   repositoryDonorDraft,
   setRepositoryDonorDraft,
+  repositoryDonorError,
+  donationLocationDraft,
+  setDonationLocationDraft,
   allDonors,
+  donationLocations,
   isAdmin,
   onOpenCollection,
   onOpenEligibleDonors,
   onOpenRepository,
+  onOpenLocations,
+  onExportDonations,
   onSearchEligible,
   onSearchRepository,
   onCreateRepositoryDonor,
+  onCreateDonationLocation,
+  onToggleDonationLocation,
   onSaveDonor,
   onSaveEligibleDonor,
   onMarkEligibleDonorAsDonated,
@@ -52,11 +61,40 @@ export default function BloodDriveRouter({
         setFilters={setRepositoryFilters}
         draft={repositoryDonorDraft}
         setDraft={setRepositoryDonorDraft}
+        error={repositoryDonorError}
         onSearch={onSearchRepository}
         onCreateDonor={onCreateRepositoryDonor}
         onSaveDonor={onSaveDonor}
         onDeleteDonor={onDeleteDonor}
         onBack={onBackToBloodDrive}
+        isAdmin={isAdmin}
+      />
+    );
+  }
+
+  if (page === 'donation-locations' && isAdmin) {
+    return (
+      <DonationLocationsPage
+        locations={donationLocations}
+        draft={donationLocationDraft}
+        setDraft={setDonationLocationDraft}
+        onCreateLocation={onCreateDonationLocation}
+        onToggleLocation={onToggleDonationLocation}
+        onBack={onBackToBloodDrive}
+      />
+    );
+  }
+
+  if (page === 'donation-locations') {
+    return (
+      <BloodDrivePage
+        donorStats={donorStats}
+        onOpenCollection={onOpenCollection}
+        onOpenEligibleDonors={onOpenEligibleDonors}
+        onOpenRepository={onOpenRepository}
+        onOpenLocations={onOpenLocations}
+        onExportDonations={onExportDonations}
+        onBack={onBackToHub}
         isAdmin={isAdmin}
       />
     );
@@ -68,7 +106,10 @@ export default function BloodDriveRouter({
       onOpenCollection={onOpenCollection}
       onOpenEligibleDonors={onOpenEligibleDonors}
       onOpenRepository={onOpenRepository}
+      onOpenLocations={onOpenLocations}
+      onExportDonations={onExportDonations}
       onBack={onBackToHub}
+      isAdmin={isAdmin}
     />
   );
 }
