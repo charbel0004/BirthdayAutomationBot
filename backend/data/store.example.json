@@ -1,0 +1,21 @@
+{
+  "admin": {
+    "username": "admin",
+    "passwordHash": "$2a$10$replace_with_bcrypt_hash"
+  },
+  "telegram": {
+    "botToken": "",
+    "defaultChatId": "",
+    "birthdayMessageTemplate": "Happy Birthday, {name}!",
+    "timezone": "Asia/Beirut",
+    "lastRunDate": ""
+  },
+  "members": [
+    {
+      "id": "example-id",
+      "name": "Jane Doe",
+      "birthdate": "03-10",
+      "active": true
+    }
+  ]
+}

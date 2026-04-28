@@ -1,0 +1,969 @@
+import { lazy, Suspense, useEffect, useState } from 'react';
+import {
+  api,
+  calculatePresentationTotalScore,
+  emptyBloodDriveForm,
+  emptyPresentationCriterion,
+  emptyPresentationScoreForm,
+  emptyPresentationSlot,
+  emptyPresentationTopic,
+  getCurrentYear,
+  getEvaluationTotalScore,
+  getNextCriterionOrder,
+  tokenKey
+} from './lib/app';
+import {
+  createDefaultSettings,
+  createEmptyBirthday,
+  createEmptyDonorStats,
+  createEmptyPresentationData,
+  createEmptyPresentationReport,
+  createEmptyUser,
+  getHashForPage,
+  getPageFromHash,
+  pages
+} from './lib/state';
+import {
+  AppLoader,
+  BirthdayOverlay,
+  BloodDriveOverlay,
+  LoginPage
+} from './components/common';
+
+const HomePage = lazy(() => import('./pages/HomePage'));
+const BloodDriveRouter = lazy(() => import('./pages/BloodDriveRouter'));
+const PresentationRouter = lazy(() => import('./pages/PresentationRouter'));
+
+export default function App() {
+  const bloodDriveRefreshMs = 10000;
+  const emptyRepositoryDonor = { firstName: '', lastName: '', dateOfBirth: '', phoneNumber: '', notes: '' };
+  const [token, setToken] = useState(localStorage.getItem(tokenKey) || '');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [page, setPage] = useState(() => getPageFromHash());
+  const [me, setMe] = useState(null);
+  const [birthdays, setBirthdays] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [settings, setSettings] = useState(createDefaultSettings);
+  const [newBirthday, setNewBirthday] = useState(createEmptyBirthday);
+  const [newUser, setNewUser] = useState(createEmptyUser);
+  const [birthdayOverlayOpen, setBirthdayOverlayOpen] = useState(false);
+  const [memberBirthdayDraft, setMemberBirthdayDraft] = useState('');
+  const [memberBirthdaySaving, setMemberBirthdaySaving] = useState(false);
+  const [memberBirthdayError, setMemberBirthdayError] = useState('');
+  const [bloodDriveOverlayOpen, setBloodDriveOverlayOpen] = useState(false);
+  const [bloodDriveSaving, setBloodDriveSaving] = useState(false);
+  const [bloodDriveError, setBloodDriveError] = useState('');
+  const [bloodDriveForm, setBloodDriveForm] = useState(emptyBloodDriveForm);
+  const [collectionLookupQuery, setCollectionLookupQuery] = useState('');
+  const [collectionLookupResults, setCollectionLookupResults] = useState([]);
+  const [selectedCollectionDonor, setSelectedCollectionDonor] = useState(null);
+  const [donorFilters, setDonorFilters] = useState({ name: '', location: '' });
+  const [eligibleDonors, setEligibleDonors] = useState([]);
+  const [allDonors, setAllDonors] = useState([]);
+  const [repositoryFilters, setRepositoryFilters] = useState({ name: '', location: '' });
+  const [repositoryDonorDraft, setRepositoryDonorDraft] = useState(emptyRepositoryDonor);
+  const [donorStats, setDonorStats] = useState(createEmptyDonorStats);
+  const [presentationData, setPresentationData] = useState(() => createEmptyPresentationData(getCurrentYear()));
+  const [presentationReport, setPresentationReport] = useState(createEmptyPresentationReport);
+  const [presentationYear, setPresentationYear] = useState(getCurrentYear());
+  const [presentationTopicDraft, setPresentationTopicDraft] = useState(emptyPresentationTopic);
+  const [presentationSlotDraft, setPresentationSlotDraft] = useState(emptyPresentationSlot);
+  const [presentationCriterionDraft, setPresentationCriterionDraft] = useState(emptyPresentationCriterion);
+  const [presentationScoreDraft, setPresentationScoreDraft] = useState(emptyPresentationScoreForm);
+  const [presentationScoreOverlayOpen, setPresentationScoreOverlayOpen] = useState(false);
+  const [presentationSpinning, setPresentationSpinning] = useState(false);
+
+  const showNotice = (message) => {
+    setNotice(message);
+    window.clearTimeout(showNotice.timeoutId);
+    showNotice.timeoutId = window.setTimeout(() => setNotice(''), 2800);
+  };
+
+  const buildDonorQuery = (filters, eligibleOnly = true, options = {}) => {
+    const params = new URLSearchParams();
+    if (filters.name.trim()) params.set('name', filters.name.trim());
+    if (filters.location.trim()) params.set('location', filters.location.trim());
+    if ((options.phone || '').trim()) params.set('phone', options.phone.trim());
+    if (!eligibleOnly) params.set('eligibleOnly', 'false');
+    if (options.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return `/api/blood-drive/donors${query ? `?${query}` : ''}`;
+  };
+
+  const buildPresentationQuery = (path) => {
+    const params = new URLSearchParams({ year: String(presentationYear) });
+    return `${path}?${params.toString()}`;
+  };
+
+  const isBloodDrivePage = [pages.bloodDrive, pages.eligibleDonors, pages.repository].includes(page);
+  const isPresentationPage = page === pages.presentations;
+
+  const loadData = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const mePayload = await api('/api/me', { token });
+      const isAdmin = mePayload.user.role === 'admin';
+      const isRecruit = mePayload.user.role === 'new recruit';
+
+      const requestEntries = [
+        ['birthdays', api('/api/birthdays', { token })]
+      ];
+
+      if (isRecruit) {
+        requestEntries.push(['presentation', api(buildPresentationQuery('/api/presentations/dashboard'), { token })]);
+      }
+
+      if (isAdmin) {
+        requestEntries.push(['users', api('/api/users', { token })]);
+        requestEntries.push(['settings', api('/api/settings', { token })]);
+      }
+
+      const settled = await Promise.allSettled(requestEntries.map(([, request]) => request));
+      const payloads = {};
+      const failures = [];
+
+      settled.forEach((result, index) => {
+        const [key] = requestEntries[index];
+        if (result.status === 'fulfilled') payloads[key] = result.value;
+        else failures.push(`${key}: ${result.reason?.message || 'request failed'}`);
+      });
+
+      setMe(mePayload);
+      setBirthdays(payloads.birthdays || []);
+      setDonorStats(createEmptyDonorStats());
+      setEligibleDonors([]);
+      setAllDonors([]);
+      setPresentationData(payloads.presentation || createEmptyPresentationData(presentationYear));
+      setMemberBirthdayDraft(payloads.birthdays?.[0]?.birthdate || '');
+      setNewBirthday((current) => ({
+        ...current,
+        name: isAdmin ? current.name : mePayload.user.displayName || mePayload.user.username
+      }));
+      setBloodDriveForm(emptyBloodDriveForm);
+      setCollectionLookupQuery('');
+      setCollectionLookupResults([]);
+      setSelectedCollectionDonor(null);
+      setRepositoryDonorDraft(emptyRepositoryDonor);
+
+      if (isAdmin) {
+        setUsers(payloads.users || []);
+        setSettings({
+          defaultChatId: payloads.settings?.defaultChatId || '',
+          timezone: payloads.settings?.timezone || 'Asia/Beirut',
+          hasBotToken: Boolean(payloads.settings?.hasBotToken)
+        });
+        setPresentationReport(createEmptyPresentationReport());
+      } else {
+        setUsers([]);
+        setPresentationReport(isRecruit ? {
+          rankings: (payloads.presentation?.presenters || []).map((item) => ({
+            presenter: item.user.displayName,
+            username: item.user.username,
+            topic: item.topic?.title || 'Unassigned',
+            slot: item.slot?.startAt || null,
+            totalScore: item.myEvaluation?.totalScore || null,
+            scoredAt: item.myEvaluation?.updatedAt || null
+          }))
+        } : createEmptyPresentationReport());
+      }
+
+      if (failures.length) {
+        setError(`Some dashboard sections failed to load: ${failures.join(' | ')}`);
+      }
+    } catch (err) {
+      if (err.message === 'Unauthorized' || err.message === 'Invalid token' || err.message === 'User no longer has access') {
+        localStorage.removeItem(tokenKey);
+        setToken('');
+        setMe(null);
+        setError('');
+        return;
+      }
+
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshPresentation = async ({ refreshReport = false } = {}) => {
+    const requests = [api(buildPresentationQuery('/api/presentations/dashboard'), { token })];
+    if (me?.user.role === 'admin' && refreshReport) requests.push(api(buildPresentationQuery('/api/presentations/report'), { token }));
+    const [presentationPayload, reportPayload] = await Promise.all(requests);
+    setPresentationData(presentationPayload);
+    if (reportPayload) {
+      setPresentationReport(reportPayload);
+      return;
+    }
+
+    if (me?.user.role === 'admin') {
+      setPresentationReport(createEmptyPresentationReport());
+      return;
+    }
+
+    setPresentationReport({
+      rankings: (presentationPayload?.presenters || []).map((item) => ({
+        presenter: item.user.displayName,
+        username: item.user.username,
+        topic: item.topic?.title || 'Unassigned',
+        slot: item.slot?.startAt || null,
+        totalScore: item.myEvaluation?.totalScore || null,
+        scoredAt: item.myEvaluation?.updatedAt || null
+      }))
+    });
+  };
+
+  const refreshBirthdays = async () => {
+    const [birthdayPayload, mePayload] = await Promise.all([api('/api/birthdays', { token }), api('/api/me', { token })]);
+    setBirthdays(birthdayPayload);
+    setMe((current) => (current ? { ...current, ...mePayload } : mePayload));
+    setMemberBirthdayDraft(birthdayPayload[0]?.birthdate || '');
+  };
+
+  const refreshUsers = async () => {
+    const [usersPayload, mePayload] = await Promise.all([api('/api/users', { token }), api('/api/me', { token })]);
+    setUsers(usersPayload);
+    setMe((current) => (current ? { ...current, ...mePayload } : mePayload));
+  };
+
+  const refreshBloodDrive = async ({ includeRepository = false } = {}) => {
+    const requests = [api('/api/blood-drive/stats', { token }), api(buildDonorQuery(donorFilters, true), { token })];
+    if (includeRepository) requests.push(api(buildDonorQuery(repositoryFilters, false), { token }));
+    const [statsPayload, eligiblePayload, repositoryPayload] = await Promise.all(requests);
+    setDonorStats(statsPayload);
+    setEligibleDonors(eligiblePayload);
+    if (repositoryPayload) setAllDonors(repositoryPayload);
+  };
+
+  useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    loadData();
+  }, [token]);
+
+  useEffect(() => {
+    const syncPageFromHash = () => setPage(getPageFromHash());
+    window.addEventListener('hashchange', syncPageFromHash);
+    return () => window.removeEventListener('hashchange', syncPageFromHash);
+  }, []);
+
+  useEffect(() => {
+    const nextHash = getHashForPage(page);
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
+  }, [page]);
+
+  useEffect(() => {
+    if (!token || !me) {
+      return;
+    }
+
+    if (isPresentationPage) {
+      refreshPresentation({ refreshReport: me.user.role === 'admin' }).catch((err) => setError(err.message));
+    }
+  }, [token, me, isPresentationPage, presentationYear]);
+
+  useEffect(() => {
+    if (!token || !me || !isBloodDrivePage) {
+      return;
+    }
+
+    const includeRepository = page === pages.repository;
+    const includeEligible = page === pages.eligibleDonors;
+    const requests = [];
+
+    if (page === pages.bloodDrive) {
+      requests.push(api('/api/blood-drive/stats', { token }).then(setDonorStats));
+    }
+
+    if (includeEligible) {
+      requests.push(api(buildDonorQuery(donorFilters, true), { token }).then(setEligibleDonors));
+    }
+
+    if (includeRepository) {
+      requests.push(api(buildDonorQuery(repositoryFilters, false), { token }).then(setAllDonors));
+    }
+
+    Promise.all(requests).catch((err) => setError(err.message));
+  }, [token, me, isBloodDrivePage, page]);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      localStorage.removeItem(tokenKey);
+      setToken('');
+      setPage(pages.home);
+      setMe(null);
+      setUsers([]);
+      setError('');
+      setNotice('');
+      setLoading(false);
+    };
+
+    window.addEventListener('app:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('app:session-expired', handleSessionExpired);
+  }, []);
+
+  useEffect(() => {
+    const nextOrder = getNextCriterionOrder(presentationData.admin?.criteria || []);
+    setPresentationCriterionDraft((current) => ({
+      ...current,
+      order: current.title || current.description ? current.order : nextOrder
+    }));
+  }, [presentationData.admin?.criteria]);
+
+  const handleLogin = (nextToken) => {
+    localStorage.setItem(tokenKey, nextToken);
+    setToken(nextToken);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(tokenKey);
+    setToken('');
+    setPage(pages.home);
+    setMe(null);
+  };
+
+  const createBirthday = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      await api('/api/birthdays', { token, method: 'POST', body: newBirthday });
+      setNewBirthday(createEmptyBirthday());
+      await refreshBirthdays();
+      showNotice('Birthday entry saved');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveMemberBirthday = async (event) => {
+    event.preventDefault();
+    setMemberBirthdaySaving(true);
+    setMemberBirthdayError('');
+    try {
+      const savedBirthday = await api('/api/birthdays', {
+        token,
+        method: 'POST',
+        body: { name: me.user.displayName || me.user.username, birthdate: memberBirthdayDraft }
+      });
+      setBirthdayOverlayOpen(false);
+      setBirthdays([savedBirthday]);
+      setMemberBirthdayDraft(savedBirthday.birthdate);
+      showNotice('Birthday entry saved');
+    } catch (err) {
+      setMemberBirthdayError(err.message);
+    } finally {
+      setMemberBirthdaySaving(false);
+    }
+  };
+
+  const updateBirthday = async (id, payload) => {
+    await api(`/api/birthdays/${id}`, { token, method: 'PUT', body: payload });
+    await refreshBirthdays();
+    showNotice('Birthday entry updated');
+  };
+
+  const deleteBirthday = async (id) => {
+    if (!window.confirm('Delete this birthday entry?')) return;
+    await api(`/api/birthdays/${id}`, { token, method: 'DELETE' });
+    await refreshBirthdays();
+    showNotice('Birthday entry deleted');
+  };
+
+  const createUser = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      await api('/api/users', { token, method: 'POST', body: newUser });
+      setNewUser(createEmptyUser());
+      await Promise.all([refreshUsers(), refreshPresentation({ refreshReport: true })]);
+      showNotice('User created');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const updateUser = async (id, payload) => {
+    await api(`/api/users/${id}`, { token, method: 'PUT', body: payload });
+    await Promise.all([refreshUsers(), refreshPresentation({ refreshReport: true })]);
+    showNotice('User updated');
+  };
+
+  const saveSettings = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      const payload = await api('/api/settings', { token, method: 'PUT', body: { defaultChatId: settings.defaultChatId } });
+      setSettings((current) => ({ ...current, defaultChatId: payload.defaultChatId || '', timezone: payload.timezone || current.timezone, hasBotToken: Boolean(payload.hasBotToken) }));
+      showNotice('Telegram settings saved');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const runBirthdayNow = async () => {
+    setError('');
+    try {
+      const result = await api('/api/birthdays/run-now', { token, method: 'POST' });
+      const names = result.matched.length ? result.matched.map((item) => item.name).join(', ') : 'none';
+      showNotice(`Check complete. Birthdays today: ${names}`);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveBloodDriveRecord = async (event) => {
+    event.preventDefault();
+    setBloodDriveSaving(true);
+    setBloodDriveError('');
+    try {
+      await api('/api/blood-drive/donors', {
+        token,
+        method: 'POST',
+        body: {
+          ...bloodDriveForm,
+          donorId: selectedCollectionDonor?.id || undefined
+        }
+      });
+      setBloodDriveForm(emptyBloodDriveForm);
+      setCollectionLookupQuery('');
+      setCollectionLookupResults([]);
+      setSelectedCollectionDonor(null);
+      setBloodDriveOverlayOpen(false);
+      await refreshBloodDrive({ includeRepository: true });
+      showNotice('Blood donor record saved');
+    } catch (err) {
+      setBloodDriveError(err.message);
+    } finally {
+      setBloodDriveSaving(false);
+    }
+  };
+
+  const updateDonor = async (id, payload) => {
+    await api(`/api/blood-drive/donors/${id}`, { token, method: 'PUT', body: payload });
+    await refreshBloodDrive({ includeRepository: true });
+    showNotice('Blood donor record updated');
+  };
+
+  const updateEligibleDonorCall = async (id, payload) => {
+    const updated = await api(`/api/blood-drive/donors/${id}/contact`, { token, method: 'PUT', body: payload });
+    await refreshBloodDrive({ includeRepository: true });
+    showNotice('Call center status updated');
+    return updated;
+  };
+
+  const markEligibleDonorAsDonated = (donor) => {
+    selectCollectionDonor(donor);
+    setBloodDriveError('');
+    setBloodDriveOverlayOpen(true);
+  };
+
+  const createRepositoryDonor = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      await api('/api/blood-drive/donors/prospects', { token, method: 'POST', body: repositoryDonorDraft });
+      setRepositoryDonorDraft(emptyRepositoryDonor);
+      await refreshBloodDrive({ includeRepository: true });
+      showNotice('Potential donor added');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    }
+  };
+
+  const deleteDonor = async (id) => {
+    if (!window.confirm('Delete this blood donor record?')) return;
+    await api(`/api/blood-drive/donors/${id}`, { token, method: 'DELETE' });
+    await refreshBloodDrive({ includeRepository: true });
+    showNotice('Blood donor record deleted');
+  };
+
+  const searchEligibleDonors = async () => setEligibleDonors(await api(buildDonorQuery(donorFilters, true), { token }));
+  const searchRepositoryDonors = async () => setAllDonors(await api(buildDonorQuery(repositoryFilters, false), { token }));
+  const refreshCollectionLookup = async (value, { updateQuery = false } = {}) => {
+    const nextValue = String(value || '');
+    if (updateQuery) {
+      setCollectionLookupQuery(nextValue);
+    }
+
+    if (nextValue.trim().length < 2) {
+      setCollectionLookupResults([]);
+      return;
+    }
+
+    const results = await api(
+      buildDonorQuery({ name: nextValue, location: '' }, false, { phone: nextValue, limit: 8 }),
+      { token }
+    );
+    setCollectionLookupResults(results);
+  };
+
+  const searchCollectionDonors = async (value) => refreshCollectionLookup(value, { updateQuery: true });
+
+  const selectCollectionDonor = (donor) => {
+    setSelectedCollectionDonor(donor);
+    setBloodDriveForm({
+      firstName: donor.firstName,
+      lastName: donor.lastName,
+      dateOfBirth: donor.dateOfBirth,
+      phoneNumber: donor.phoneNumber,
+      location: donor.location || '',
+      notes: donor.notes || ''
+    });
+    setCollectionLookupQuery(donor.fullName);
+    setCollectionLookupResults([]);
+  };
+
+  const clearSelectedCollectionDonor = () => {
+    setSelectedCollectionDonor(null);
+    setCollectionLookupQuery('');
+    setCollectionLookupResults([]);
+    setBloodDriveForm(emptyBloodDriveForm);
+  };
+
+  useEffect(() => {
+    if (!token || !me || !isBloodDrivePage) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      try {
+        if (page === pages.bloodDrive) {
+          setDonorStats(await api('/api/blood-drive/stats', { token }));
+          return;
+        }
+
+        if (page === pages.eligibleDonors) {
+          setEligibleDonors(await api(buildDonorQuery(donorFilters, true), { token }));
+          return;
+        }
+
+        if (page === pages.repository) {
+          const activeElement = document.activeElement;
+          const isEditingRepository =
+            activeElement instanceof HTMLElement &&
+            activeElement.closest('.repository-table-wrap') &&
+            ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName);
+
+          if (isEditingRepository) {
+            return;
+          }
+
+          setAllDonors(await api(buildDonorQuery(repositoryFilters, false), { token }));
+        }
+      } catch (err) {
+        setError(err.message);
+      }
+    }, bloodDriveRefreshMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [token, me, isBloodDrivePage, page, donorFilters, repositoryFilters]);
+
+  useEffect(() => {
+    if (!token || !bloodDriveOverlayOpen || selectedCollectionDonor || collectionLookupQuery.trim().length < 2) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      refreshCollectionLookup(collectionLookupQuery).catch((err) => setBloodDriveError(err.message));
+    }, bloodDriveRefreshMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [token, bloodDriveOverlayOpen, selectedCollectionDonor, collectionLookupQuery]);
+
+  const spinPresentationTopic = async () => {
+    setPresentationSpinning(true);
+    try {
+      await api('/api/presentations/spin', { token, method: 'POST', body: {} });
+      await refreshPresentation();
+      showNotice('Presentation topic assigned');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPresentationSpinning(false);
+    }
+  };
+
+  const bookPresentationSlot = async (slotId) => {
+    try {
+      const payload = await api('/api/presentations/book-slot', { token, method: 'POST', body: { slotId } });
+      setPresentationData((current) => {
+        const previousBooking = current.recruit?.booking || null;
+        const hadBooking = Boolean(previousBooking);
+        const nextBooking = payload.booking;
+        const nextSlots = (current.recruit?.slots || []).map((slot) => {
+          const isTarget = slot.id === nextBooking.id;
+          const wasOwnPrevious = previousBooking && slot.id === previousBooking.id;
+          if (isTarget) return { ...slot, isBooked: true, booking: nextBooking.booking, bookedByName: me.user.displayName, startAt: nextBooking.startAt, endAt: nextBooking.endAt };
+          if (wasOwnPrevious) return { ...slot, isBooked: false, booking: null, bookedByName: null };
+          return slot;
+        });
+        return {
+          ...current,
+          stats: {
+            ...current.stats,
+            bookedPresentations: hadBooking ? current.stats.bookedPresentations : current.stats.bookedPresentations + 1,
+            openSlots: hadBooking ? current.stats.openSlots : Math.max(0, current.stats.openSlots - 1)
+          },
+          recruit: current.recruit ? { ...current.recruit, booking: nextBooking, slots: nextSlots } : current.recruit
+        };
+      });
+      setPage(pages.home);
+      showNotice('Presentation slot reserved');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const createPresentationTopic = async (event) => {
+    event.preventDefault();
+    try {
+      await api('/api/presentations/topics', { token, method: 'POST', body: presentationTopicDraft });
+      setPresentationTopicDraft(emptyPresentationTopic);
+      await refreshPresentation({ refreshReport: true });
+      showNotice('Presentation subject added');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const deletePresentationTopic = async (id) => {
+    if (!window.confirm('Delete this presentation subject?')) return;
+    try {
+      await api(`/api/presentations/topics/${id}`, { token, method: 'DELETE' });
+      await refreshPresentation({ refreshReport: true });
+      showNotice('Presentation subject deleted');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const createPresentationSlot = async (event) => {
+    event.preventDefault();
+    try {
+      await api('/api/presentations/slots', { token, method: 'POST', body: presentationSlotDraft });
+      setPresentationSlotDraft(emptyPresentationSlot);
+      await refreshPresentation({ refreshReport: true });
+      showNotice('Presentation slots generated');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const deletePresentationSlot = async (id) => {
+    if (!window.confirm('Delete this presentation spot?')) return;
+    try {
+      await api(`/api/presentations/slots/${id}`, { token, method: 'DELETE' });
+      await refreshPresentation({ refreshReport: true });
+      showNotice('Presentation spot deleted');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const createPresentationCriterion = async (event) => {
+    event.preventDefault();
+    try {
+      await api('/api/presentations/criteria', { token, method: 'POST', body: presentationCriterionDraft });
+      setPresentationCriterionDraft({
+        ...emptyPresentationCriterion,
+        order: getNextCriterionOrder([...(presentationData.admin?.criteria || []), { order: presentationCriterionDraft.order }])
+      });
+      await refreshPresentation({ refreshReport: true });
+      showNotice('Presentation criterion added');
+    } catch (err) {
+      if (err.message.includes('order already exists')) {
+        const nextOrder = getNextCriterionOrder(presentationData.admin?.criteria || []);
+        setPresentationCriterionDraft((current) => ({ ...current, order: nextOrder }));
+      }
+      setError(err.message);
+    }
+  };
+
+  const updatePresentationCriterion = async (id, payload) => {
+    try {
+      await api(`/api/presentations/criteria/${id}`, { token, method: 'PUT', body: payload });
+      await refreshPresentation({ refreshReport: true });
+      showNotice('Presentation criterion updated');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const togglePresentationSecondAttempt = async (presenterId, allowSecondAttempt) => {
+    try {
+      await api(`/api/presentations/presenters/${presenterId}/allow-second-attempt`, { token, method: 'PATCH', body: { allowSecondAttempt } });
+      await refreshPresentation({ refreshReport: true });
+      showNotice(`Attempt 2 ${allowSecondAttempt ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const deletePresentationCriterion = async (id) => {
+    if (!window.confirm('Delete this presentation criterion?')) return;
+    try {
+      await api(`/api/presentations/criteria/${id}`, { token, method: 'DELETE' });
+      await refreshPresentation({ refreshReport: true });
+      showNotice('Presentation criterion deleted');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const savePresentationEvaluation = async (event) => {
+    event.preventDefault();
+    setError('');
+
+    const attempt = Number(presentationScoreDraft.attempt || 1);
+    const presenterId = presentationScoreDraft.presenterId;
+    const scores = presentationData.activeCriteria.map((criterion) => ({ criterionId: criterion.id, score: Number(presentationScoreDraft.scores[criterion.id] || 1) }));
+    const totalScore = calculatePresentationTotalScore(scores, presentationData.activeCriteria);
+    const optimisticEvaluation = {
+      id: `optimistic-${presenterId}-${me.user.id}-${attempt}`,
+      presenterUserId: presenterId,
+      evaluatorUserId: me.user.id,
+      evaluator: me.user,
+      attempt,
+      totalScore,
+      comment: presentationScoreDraft.comment,
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      criteria: scores.map((item) => {
+        const criterion = presentationData.activeCriteria.find((entry) => entry.id === item.criterionId);
+        return { criterionId: item.criterionId, title: criterion?.title || '', order: criterion?.order || 0, score: item.score };
+      })
+    };
+
+    setPresentationScoreOverlayOpen(false);
+    setPresentationData((current) => ({
+      ...current,
+      presenters: current.presenters.map((presenter) => {
+        if (presenter.user.id !== presenterId) return presenter;
+
+        const nextEvaluations = [...(presenter.evaluations || []).filter((item) => !(item.evaluatorUserId === me.user.id && Number(item.attempt) === attempt)), optimisticEvaluation].sort((a, b) => Number(a.attempt || 1) - Number(b.attempt || 1));
+        const nextMyEvaluations = [...(presenter.myEvaluations || []).filter((item) => Number(item.attempt) !== attempt), optimisticEvaluation].sort((a, b) => Number(a.attempt || 1) - Number(b.attempt || 1));
+        const shouldRecalculateAverages = me.user.role === 'admin';
+        const attempt1Evaluations = nextEvaluations.filter((item) => Number(item.attempt) === 1);
+        const attempt2Evaluations = nextEvaluations.filter((item) => Number(item.attempt) === 2);
+
+        return {
+          ...presenter,
+          evaluations: nextEvaluations,
+          myEvaluations: nextMyEvaluations,
+          myEvaluation: optimisticEvaluation,
+          evaluation: optimisticEvaluation,
+          attempt1Average: shouldRecalculateAverages ? (attempt1Evaluations.length ? Number((attempt1Evaluations.reduce((sum, item) => sum + getEvaluationTotalScore(item), 0) / attempt1Evaluations.length).toFixed(2)) : null) : presenter.attempt1Average,
+          attempt2Average: shouldRecalculateAverages ? (attempt2Evaluations.length ? Number((attempt2Evaluations.reduce((sum, item) => sum + getEvaluationTotalScore(item), 0) / attempt2Evaluations.length).toFixed(2)) : null) : presenter.attempt2Average
+        };
+      })
+    }));
+
+    try {
+      await api(`/api/presentations/evaluations/${presenterId}`, { token, method: 'PUT', body: { attempt, scores, comment: presentationScoreDraft.comment } });
+      await refreshPresentation({ refreshReport: true });
+      showNotice(`Attempt ${attempt} score saved`);
+    } catch (err) {
+      await refreshPresentation({ refreshReport: true }).catch(() => {});
+      setError(err.message);
+    }
+  };
+
+  const generatePresentationReport = async () => {
+    try {
+      const payload = await api(buildPresentationQuery('/api/presentations/report'), { token });
+      setPresentationReport(payload);
+      showNotice('Presentation report refreshed');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  if (!token) return <LoginPage onLogin={handleLogin} />;
+  if (loading) return <AppLoader title="Preparing your dashboard" subtitle="Loading access, workspace records, and your operational dashboard." />;
+  if (!me) return <AppLoader title="Unable to load the dashboard" subtitle="The session could not be prepared. Try logging in again." />;
+
+  const isAdmin = me.user.role === 'admin';
+  const memberBirthday = birthdays[0] || null;
+
+  const renderPage = () => {
+    if (isBloodDrivePage) {
+      return (
+        <BloodDriveRouter
+          page={page}
+          donorStats={donorStats}
+          donorFilters={donorFilters}
+          setDonorFilters={setDonorFilters}
+          eligibleDonors={eligibleDonors}
+          repositoryFilters={repositoryFilters}
+          setRepositoryFilters={setRepositoryFilters}
+          repositoryDonorDraft={repositoryDonorDraft}
+          setRepositoryDonorDraft={setRepositoryDonorDraft}
+          allDonors={allDonors}
+          isAdmin={isAdmin}
+          onOpenCollection={() => {
+            setBloodDriveForm(emptyBloodDriveForm);
+            setBloodDriveError('');
+            setCollectionLookupQuery('');
+            setCollectionLookupResults([]);
+            setSelectedCollectionDonor(null);
+            setBloodDriveOverlayOpen(true);
+          }}
+          onOpenEligibleDonors={() => setPage(pages.eligibleDonors)}
+          onOpenRepository={() => setPage(pages.repository)}
+          onSearchEligible={searchEligibleDonors}
+          onSearchRepository={searchRepositoryDonors}
+          onCreateRepositoryDonor={createRepositoryDonor}
+          onSaveDonor={updateDonor}
+          onSaveEligibleDonor={updateEligibleDonorCall}
+          onMarkEligibleDonorAsDonated={markEligibleDonorAsDonated}
+          onDeleteDonor={deleteDonor}
+          onBackToHub={() => setPage(pages.home)}
+          onBackToBloodDrive={() => setPage(pages.bloodDrive)}
+        />
+      );
+    }
+
+    if (page === pages.presentations) {
+      return (
+        <PresentationRouter
+          role={me.user.role}
+          presentation={presentationData}
+          report={presentationReport}
+          selectedYear={presentationYear}
+          onChangeYear={setPresentationYear}
+          spinning={presentationSpinning}
+          onSpin={spinPresentationTopic}
+          onBookSlot={bookPresentationSlot}
+          topicDraft={presentationTopicDraft}
+          setTopicDraft={setPresentationTopicDraft}
+          slotDraft={presentationSlotDraft}
+          setSlotDraft={setPresentationSlotDraft}
+          criterionDraft={presentationCriterionDraft}
+          setCriterionDraft={setPresentationCriterionDraft}
+          scoreDraft={presentationScoreDraft}
+          setScoreDraft={setPresentationScoreDraft}
+          scoreOverlayOpen={presentationScoreOverlayOpen}
+          setScoreOverlayOpen={setPresentationScoreOverlayOpen}
+          onCreateTopic={createPresentationTopic}
+          onDeleteTopic={deletePresentationTopic}
+          onCreateSlot={createPresentationSlot}
+          onDeleteSlot={deletePresentationSlot}
+          onCreateCriterion={createPresentationCriterion}
+          onUpdateCriterion={updatePresentationCriterion}
+          onDeleteCriterion={deletePresentationCriterion}
+          onToggleSecondAttempt={togglePresentationSecondAttempt}
+          onSaveEvaluation={savePresentationEvaluation}
+          onGenerateReport={generatePresentationReport}
+          onBack={() => setPage(pages.home)}
+        />
+      );
+    }
+
+    return (
+      <HomePage
+        me={me}
+        memberBirthday={memberBirthday}
+        presentationData={presentationData}
+        donorStats={donorStats}
+        birthdays={birthdays}
+        users={users}
+        settings={settings}
+        setSettings={setSettings}
+        newBirthday={newBirthday}
+        setNewBirthday={setNewBirthday}
+        newUser={newUser}
+        setNewUser={setNewUser}
+        onCreateBirthday={createBirthday}
+        onUpdateBirthday={updateBirthday}
+        onDeleteBirthday={deleteBirthday}
+        onCreateUser={createUser}
+        onUpdateUser={updateUser}
+        onSaveSettings={saveSettings}
+        onOpenBirthdayOverlay={() => setBirthdayOverlayOpen(true)}
+        onOpenBloodDrive={() => setPage(pages.bloodDrive)}
+        onOpenPresentations={() => setPage(pages.presentations)}
+      />
+    );
+  };
+
+  return (
+    <div className="dashboard-shell">
+      <div className="dashboard-container">
+        <header className="dashboard-hero">
+          <div>
+            <div className="hero-badge hero-badge-small">Youth Sector Hub</div>
+            <h1>Red Cross Youth Sector Hub</h1>
+            <p>Logged in as <strong>{me.user.displayName}</strong> ({me.user.role}).</p>
+          </div>
+          <div className="top-actions">
+            {page !== pages.home ? <button type="button" className="secondary" onClick={() => setPage(pages.home)}>Back to Hub</button> : null}
+            {isAdmin ? <button type="button" className="secondary" onClick={runBirthdayNow}>Run Birthday Check</button> : null}
+            <button type="button" onClick={handleLogout}>Log out</button>
+          </div>
+        </header>
+
+        {notice ? <div className="notice-banner">{notice}</div> : null}
+        {error ? <div className="error-banner">{error}</div> : null}
+        <Suspense
+          fallback={
+            <AppLoader
+              title="Opening workspace section"
+              subtitle="Loading the selected page and preparing its tools."
+            />
+          }
+        >
+          {renderPage()}
+        </Suspense>
+
+        <BirthdayOverlay
+          isOpen={!isAdmin && !memberBirthday && birthdayOverlayOpen}
+          birthdate={memberBirthdayDraft}
+          onChange={setMemberBirthdayDraft}
+          onClose={() => { setMemberBirthdayError(''); setBirthdayOverlayOpen(false); }}
+          onSubmit={saveMemberBirthday}
+          saving={memberBirthdaySaving}
+          error={memberBirthdayError}
+        />
+        <BloodDriveOverlay
+          isOpen={bloodDriveOverlayOpen}
+          form={bloodDriveForm}
+          onChange={(field, value) => setBloodDriveForm((current) => ({ ...current, [field]: value }))}
+          lookupQuery={collectionLookupQuery}
+          lookupResults={collectionLookupResults}
+          selectedDonor={selectedCollectionDonor}
+          onLookupQueryChange={searchCollectionDonors}
+          onSelectDonor={selectCollectionDonor}
+          onClearSelectedDonor={clearSelectedCollectionDonor}
+          onClose={() => {
+            setBloodDriveForm(emptyBloodDriveForm);
+            setBloodDriveError('');
+            setCollectionLookupQuery('');
+            setCollectionLookupResults([]);
+            setSelectedCollectionDonor(null);
+            setBloodDriveOverlayOpen(false);
+          }}
+          onSubmit={saveBloodDriveRecord}
+          saving={bloodDriveSaving}
+          error={bloodDriveError}
+        />
+      </div>
+    </div>
+  );
+}

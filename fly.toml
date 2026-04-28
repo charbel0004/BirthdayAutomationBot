@@ -1,0 +1,30 @@
+app = "backend-hidden-fog-2243"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "4000"
+  DATA_FILE = "/data/store.json"
+  BOT_TIMEZONE = "Asia/Beirut"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = "stop"
+  min_machines_running = 0
+  processes = ["app"]
+
+[[http_service.checks]]
+  grace_period = "15s"
+  interval = "30s"
+  method = "get"
+  path = "/api/health"
+  protocol = "http"
+  timeout = "5s"
+
+[[mounts]]
+  source = "backend_data"
+  destination = "/data"
