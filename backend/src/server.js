@@ -676,6 +676,87 @@ app.post('/api/auth/login', async (req, res) => {
   });
 });
 
+app.post('/api/auth/signup', async (req, res) => {
+  const { username, password, displayName, birthdate, role = 'member' } = req.body || {};
+
+  if (!username || !password || !displayName || !birthdate) {
+    return res.status(400).json({ error: 'username, displayName, password, birthdate, and role are required' });
+  }
+
+  if (!['member', 'new recruit'].includes(role)) {
+    return res.status(400).json({ error: 'role must be member or new recruit' });
+  }
+
+  if (!isValidBirthdate(birthdate)) {
+    return res.status(400).json({ error: 'birthdate must use MM-DD format' });
+  }
+
+  const trimmedUsername = String(username).trim();
+  const trimmedDisplayName = String(displayName).trim();
+
+  if (!trimmedUsername || !trimmedDisplayName) {
+    return res.status(400).json({ error: 'username and displayName are required' });
+  }
+
+  const [existingUser, duplicateBirthday] = await Promise.all([
+    usersCollection().findOne({ username: trimmedUsername }),
+    birthdaysCollection().findOne({
+      normalizedName: normalizeName(trimmedDisplayName),
+      birthdate
+    })
+  ]);
+
+  if (existingUser) {
+    return res.status(409).json({ error: 'Username already exists' });
+  }
+
+  if (duplicateBirthday) {
+    return res.status(409).json({ error: 'This birthday entry already exists' });
+  }
+
+  const createdAt = now();
+  const user = {
+    username: trimmedUsername,
+    passwordHash: await bcrypt.hash(String(password), 10),
+    displayName: trimmedDisplayName,
+    role,
+    active: true,
+    createdAt,
+    updatedAt: createdAt
+  };
+
+  const userResult = await usersCollection().insertOne(user);
+
+  try {
+    await birthdaysCollection().insertOne({
+      userId: userResult.insertedId,
+      name: trimmedDisplayName,
+      normalizedName: normalizeName(trimmedDisplayName),
+      birthdate,
+      active: true,
+      createdBy: trimmedUsername,
+      createdAt,
+      updatedAt: createdAt
+    });
+  } catch (error) {
+    await usersCollection().deleteOne({ _id: userResult.insertedId });
+
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'This birthday entry already exists' });
+    }
+
+    throw error;
+  }
+
+  const nextUser = { ...user, _id: userResult.insertedId };
+  const token = signAuthToken(nextUser);
+
+  return res.status(201).json({
+    token,
+    user: sanitizeUser(nextUser)
+  });
+});
+
 app.use('/api', authMiddleware, requireAuthenticatedUser);
 
 app.get('/api/me', async (req, res) => {

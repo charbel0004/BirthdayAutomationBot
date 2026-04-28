@@ -1738,3 +1738,21 @@ th {
     display: none;
   }
 }
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.auth-mode-switch button {
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(255, 255, 255, 0.7);
+  color: #334155;
+}
+
+.auth-mode-switch button.active {
+  background: #b12028;
+  border-color: #b12028;
+  color: #fff;
+}

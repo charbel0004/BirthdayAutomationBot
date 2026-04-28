@@ -130,22 +130,47 @@ export function BirthdatePicker({ value, onChange }) {
 }
 
 export function LoginPage({ onLogin }) {
-  const [form, setForm] = useState({ username: '', password: '' });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState('login');
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [signupForm, setSignupForm] = useState({
+    displayName: '',
+    username: '',
+    password: '',
+    birthdate: '',
+    role: 'member'
+  });
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [signupLoading, setSignupLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [signupError, setSignupError] = useState('');
 
-  const submit = async (event) => {
+  const submitLogin = async (event) => {
     event.preventDefault();
-    setLoading(true);
-    setError('');
+    setLoginLoading(true);
+    setLoginError('');
 
     try {
-      const payload = await api('/api/auth/login', { method: 'POST', body: form });
+      const payload = await api('/api/auth/login', { method: 'POST', body: loginForm });
       onLogin(payload.token);
     } catch (err) {
-      setError(err.message);
+      setLoginError(err.message);
     } finally {
-      setLoading(false);
+      setLoginLoading(false);
+    }
+  };
+
+  const submitSignup = async (event) => {
+    event.preventDefault();
+    setSignupLoading(true);
+    setSignupError('');
+
+    try {
+      const payload = await api('/api/auth/signup', { method: 'POST', body: signupForm });
+      onLogin(payload.token);
+    } catch (err) {
+      setSignupError(err.message);
+    } finally {
+      setSignupLoading(false);
     }
   };
 
@@ -177,22 +202,65 @@ export function LoginPage({ onLogin }) {
         </section>
         <section className="login-panel">
           <div className="panel-kicker">Secure Access</div>
-          <h2>Sign in to Hub</h2>
-          <p>Use your assigned username and password to access the workspace.</p>
-          <form onSubmit={submit} className="grid-form">
-            <label>
-              Username
-              <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="Enter your username" required />
-            </label>
-            <label>
-              Password
-              <input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Enter your password" required />
-            </label>
-            {error ? <div className="error-banner">{error}</div> : null}
-            <button type="submit" disabled={loading}>
-              {loading ? 'Signing in...' : 'Log in'}
-            </button>
-          </form>
+          <div className="auth-mode-switch" role="tablist" aria-label="Authentication mode">
+            <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Log in</button>
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Sign up</button>
+          </div>
+
+          {mode === 'login' ? (
+            <>
+              <h2>Sign in to Hub</h2>
+              <p>Use your assigned username and password to access the workspace.</p>
+              <form onSubmit={submitLogin} className="grid-form">
+                <label>
+                  Username
+                  <input value={loginForm.username} onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })} placeholder="Enter your username" required />
+                </label>
+                <label>
+                  Password
+                  <input type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="Enter your password" required />
+                </label>
+                {loginError ? <div className="error-banner">{loginError}</div> : null}
+                <button type="submit" disabled={loginLoading}>
+                  {loginLoading ? 'Signing in...' : 'Log in'}
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2>Create your account</h2>
+              <p>Register yourself as a member or new recruit and save your birthday during signup.</p>
+              <form onSubmit={submitSignup} className="grid-form">
+                <label>
+                  Full name
+                  <input value={signupForm.displayName} onChange={(event) => setSignupForm({ ...signupForm, displayName: event.target.value })} placeholder="Enter your full name" required />
+                </label>
+                <label>
+                  Username
+                  <input value={signupForm.username} onChange={(event) => setSignupForm({ ...signupForm, username: event.target.value })} placeholder="Choose a username" required />
+                </label>
+                <label>
+                  Password
+                  <input type="password" value={signupForm.password} onChange={(event) => setSignupForm({ ...signupForm, password: event.target.value })} placeholder="Choose a password" required />
+                </label>
+                <label>
+                  Role
+                  <select value={signupForm.role} onChange={(event) => setSignupForm({ ...signupForm, role: event.target.value })} required>
+                    <option value="member">Member</option>
+                    <option value="new recruit">New recruit</option>
+                  </select>
+                </label>
+                <label>
+                  Date of birth
+                  <BirthdatePicker value={signupForm.birthdate} onChange={(birthdate) => setSignupForm({ ...signupForm, birthdate })} />
+                </label>
+                {signupError ? <div className="error-banner">{signupError}</div> : null}
+                <button type="submit" disabled={signupLoading}>
+                  {signupLoading ? 'Creating account...' : 'Create account'}
+                </button>
+              </form>
+            </>
+          )}
         </section>
       </main>
     </div>
