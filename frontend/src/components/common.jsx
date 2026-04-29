@@ -268,6 +268,49 @@ export function LoginPage({ onLogin }) {
   );
 }
 
+export function RecruitmentInterestPage({ form, onChange, onSubmit, saving, error, success }) {
+  return (
+    <div className="login-shell">
+      <div className="login-backdrop" />
+      <main className="login-grid">
+        <section className="hero-panel">
+          <div className="hero-badge">Lebanese Red Cross</div>
+          <h1>Recruitment Interest Form</h1>
+          <p className="hero-copy">
+            Complete this form to register your interest in joining the Lebanese Red Cross Youth Sector, Jbeil Center. A member of the recruitment team will review your submission and contact you once our recruitment campaign starts.
+          </p>
+        </section>
+        <section className="login-panel">
+          <div className="panel-kicker">Recruitment</div>
+          <h2>Interested in joining?</h2>
+          <p>Fill in your details and the recruitment call center will follow up with you.</p>
+          <form onSubmit={onSubmit} className="grid-form">
+            <label>
+              First name
+              <input value={form.firstName} onChange={(event) => onChange('firstName', event.target.value)} required />
+            </label>
+            <label>
+              Last name
+              <input value={form.lastName} onChange={(event) => onChange('lastName', event.target.value)} required />
+            </label>
+            <label>
+              Phone number
+              <input value={form.phoneNumber} onChange={(event) => onChange('phoneNumber', event.target.value)} required />
+            </label>
+            <label>
+              Date of birth
+              <input type="date" value={form.dateOfBirth} onChange={(event) => onChange('dateOfBirth', event.target.value)} required />
+            </label>
+            {error ? <div className="error-banner">{error}</div> : null}
+            {success ? <div className="notice-banner">{success}</div> : null}
+            <button type="submit" disabled={saving}>{saving ? 'Submitting...' : 'Submit Interest'}</button>
+          </form>
+        </section>
+      </main>
+    </div>
+  );
+}
+
 export function MetricBarChart({ title, items }) {
   const max = Math.max(...items.map((item) => item.value), 1);
 
@@ -538,6 +581,53 @@ export function DonorProspectOverlay({ isOpen, draft, setDraft, onClose, onSubmi
           </label>
           {error ? <div className="error-banner">{error}</div> : null}
           <button type="submit">Add To Call Center List</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function RecruitmentInterestOverlay({ isOpen, draft, setDraft, onClose, onSubmit, error, saving }) {
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card blood-drive-overlay-card" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-head">
+          <h2>Add Interested Person</h2>
+          <button type="button" className="secondary" onClick={onClose}>Close</button>
+        </div>
+        <p>Add a recruitment lead directly to the repository without using the QR form.</p>
+        <form onSubmit={onSubmit} className="grid-form">
+          <label>
+            First name
+            <input value={draft.firstName} onChange={(event) => setDraft((current) => ({ ...current, firstName: event.target.value }))} required />
+          </label>
+          <label>
+            Last name
+            <input value={draft.lastName} onChange={(event) => setDraft((current) => ({ ...current, lastName: event.target.value }))} required />
+          </label>
+          <label>
+            Phone number
+            <input value={draft.phoneNumber} onChange={(event) => setDraft((current) => ({ ...current, phoneNumber: event.target.value }))} required />
+          </label>
+          <label>
+            Date of birth
+            <input type="date" value={draft.dateOfBirth} onChange={(event) => setDraft((current) => ({ ...current, dateOfBirth: event.target.value }))} required />
+          </label>
+          {error ? <div className="error-banner">{error}</div> : null}
+          <button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Add Interested Person'}</button>
         </form>
       </div>
     </div>
@@ -815,6 +905,98 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
             <div key={`${entry.callDate}-${index}`} className="call-history-item">
               <strong>{entry.callDate || 'Unknown date'}</strong>
               <span>{entry.callStatus || 'No status'}{entry.upcomingDonationDate ? ` · Upcoming: ${entry.upcomingDonationDate}` : ''}</span>
+              <span>{entry.recordedByName || 'Unknown user'}</span>
+              <p>{entry.notes || 'No notes'}</p>
+            </div>
+          ))
+        ) : (
+          <p className="helper-text">No call records yet.</p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+export function RecruitmentCallCenterPanel({ lead, onSave, editable, isOpen, onClose }) {
+  const [draft, setDraft] = useState({
+    callStatus: lead.callStatus || '',
+    followUpDate: lead.followUpDate || '',
+    notes: lead.notes || ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDraft({
+      callStatus: lead.callStatus || '',
+      followUpDate: lead.followUpDate || '',
+      notes: lead.notes || ''
+    });
+  }, [lead]);
+
+  if (!isOpen) return null;
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(lead.id, draft);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <article className="call-center-record-card">
+      <div className="call-center-record-topbar">
+        <h3>Recruitment Call Record</h3>
+        <button type="button" className="secondary" onClick={onClose}>Close</button>
+      </div>
+      <div className="call-center-record-head">
+        <div>
+          <h3>{lead.fullName}</h3>
+          <p>{lead.phoneNumber || 'No phone number'}{lead.dateOfBirth ? ` · DOB: ${lead.dateOfBirth}` : ''}</p>
+        </div>
+        <div className="call-center-meta">
+          <span>Status: {lead.callStatus || 'New'}</span>
+          <span>Last call: {lead.lastCallDate || 'No call record yet'}</span>
+        </div>
+      </div>
+      <div className="grid-form">
+        <label>
+          Call result
+          <select value={draft.callStatus} onChange={(event) => setDraft({ ...draft, callStatus: event.target.value })} disabled={!editable}>
+            <option value="">Select result</option>
+            <option value="follow-up">Needs follow-up</option>
+            <option value="scheduled">Scheduled for recruitment</option>
+            <option value="not-interested">Not interested</option>
+            <option value="no-answer">No answer</option>
+          </select>
+        </label>
+        {['follow-up', 'scheduled'].includes(draft.callStatus) ? (
+          <label>
+            Follow-up date
+            <input type="date" value={draft.followUpDate} onChange={(event) => setDraft({ ...draft, followUpDate: event.target.value })} disabled={!editable} required />
+          </label>
+        ) : null}
+        <label>
+          Notes
+          <textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Recruitment call notes" disabled={!editable} />
+        </label>
+      </div>
+      <div className="actions">
+        {editable ? <button type="button" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button> : <span className="helper-text">Read only</span>}
+      </div>
+      {error ? <span className="small-error">{error}</span> : null}
+      <div className="call-center-history">
+        <h4>Call history</h4>
+        {lead.callHistory?.length ? (
+          lead.callHistory.slice(0, 5).map((entry, index) => (
+            <div key={`${entry.callDate}-${index}`} className="call-history-item">
+              <strong>{entry.callDate || 'Unknown date'}</strong>
+              <span>{entry.callStatus || 'No status'}{entry.followUpDate ? ` · Follow-up: ${entry.followUpDate}` : ''}</span>
               <span>{entry.recordedByName || 'Unknown user'}</span>
               <p>{entry.notes || 'No notes'}</p>
             </div>

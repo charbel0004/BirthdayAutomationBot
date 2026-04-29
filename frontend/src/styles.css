@@ -116,29 +116,84 @@ label {
 
 .notice-banner,
 .error-banner {
-  border-radius: 16px;
-  padding: 13px 14px;
+  position: relative;
+  display: grid;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 14px 16px 14px 50px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  box-shadow: 0 10px 24px rgba(33, 24, 19, 0.06);
+  line-height: 1.45;
+}
+
+.notice-banner::before,
+.error-banner::before {
+  position: absolute;
+  left: 16px;
+  top: 15px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .notice-banner {
-  background: var(--green);
-  border: 1px solid var(--green-border);
+  background: linear-gradient(180deg, #f5fbf6 0%, #edf7ef 100%);
+  border-color: #c9e4d1;
+  color: #1f5f3c;
+}
+
+.notice-banner::before {
+  content: '✓';
+  background: #dcefe2;
+  color: #226645;
 }
 
 .error-banner {
-  background: var(--danger-bg);
-  border: 1px solid var(--danger-border);
-  color: #8e2231;
+  background: linear-gradient(180deg, #fff7f7 0%, #fef0f1 100%);
+  border-color: #efc6cd;
+  color: #8a2232;
+}
+
+.error-banner::before {
+  content: '!';
+  background: #f8dce1;
+  color: #9a2738;
 }
 
 .small-error {
-  color: #8e2231;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8a2232;
   font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.small-error::before {
+  content: '!';
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #f8dce1;
+  color: #9a2738;
+  font-size: 10px;
+  font-weight: 800;
+  flex: 0 0 auto;
 }
 
 .helper-text {
   color: var(--muted);
   align-self: center;
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
 
 .modal-backdrop {
@@ -355,6 +410,23 @@ label {
   padding: 24px;
 }
 
+.app-toast-stack {
+  position: fixed;
+  top: 22px;
+  right: 22px;
+  z-index: 60;
+  width: min(420px, calc(100vw - 28px));
+  display: grid;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.app-toast-stack .notice-banner,
+.app-toast-stack .error-banner {
+  margin-top: 0;
+  pointer-events: auto;
+}
+
 .dashboard-container {
   max-width: 1240px;
   margin: 0 auto;
@@ -413,6 +485,10 @@ label {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
   margin-bottom: 16px;
+}
+
+.member-home-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .blood-drive-module-grid {
@@ -1197,7 +1273,36 @@ label {
 }
 
 .user-form {
-  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(240px, 1.8fr) auto auto;
+}
+
+.module-access-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.module-access-editor > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.module-access-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.module-access-options-compact {
+  display: grid;
+  gap: 6px;
+}
+
+.module-access-options-compact .inline-checkbox {
+  font-size: 0.9rem;
 }
 
 .blood-drive-overlay-card {
@@ -1786,6 +1891,11 @@ th {
     flex-direction: column;
   }
 
+  .member-home-grid,
+  .blood-drive-module-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .member-birthday-card {
     grid-template-columns: 1fr;
     padding-bottom: 92px;
@@ -1819,7 +1929,23 @@ th {
     border-radius: 22px;
   }
 
+  .app-toast-stack {
+    top: 14px;
+    right: 14px;
+    left: 14px;
+    width: auto;
+  }
+
   .stats-row {
+    grid-template-columns: 1fr;
+  }
+
+  .member-home-grid,
+  .blood-drive-module-grid,
+  .module-grid,
+  .repository-summary-grid,
+  .chart-grid,
+  .presentation-report-summary {
     grid-template-columns: 1fr;
   }
 
@@ -1828,6 +1954,15 @@ th {
   .call-center-layout,
   .call-center-record-head {
     grid-template-columns: 1fr;
+  }
+
+  .module-card {
+    padding: 16px;
+  }
+
+  .module-icon {
+    width: 58px;
+    height: 58px;
   }
 
   .call-center-guide {
@@ -1851,10 +1986,11 @@ th {
 
   .top-actions {
     width: 100%;
+    flex-direction: column;
   }
 
   .top-actions button {
-    flex: 1;
+    width: 100%;
   }
 
   .birthday-mark {
@@ -1872,6 +2008,8 @@ th {
   .modal-card {
     padding: 18px;
     border-radius: 22px;
+    width: 100%;
+    max-height: calc(100vh - 22px);
   }
 
   .chart-row {
@@ -1904,7 +2042,7 @@ th {
   }
 
   .repository-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .repository-filter-form {
@@ -1959,6 +2097,43 @@ th {
   .presentation-scoring-table {
     display: none;
   }
+
+  .export-form,
+  .location-form,
+  .call-center-form-actions,
+  .section-head,
+  .presentation-report-section-head,
+  .modal-head {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .export-form input[type="date"] {
+    width: 100%;
+  }
+
+  .location-form button,
+  .export-form button,
+  .page-header button,
+  .section-head button {
+    width: 100%;
+  }
+
+  .user-form .module-access-editor,
+  .module-access-options,
+  .module-access-options-compact {
+    width: 100%;
+  }
+
+  .module-access-options,
+  .module-access-options-compact {
+    grid-template-columns: 1fr;
+  }
+
+  .birthday-picker {
+    grid-template-columns: 1fr;
+  }
 }
 .auth-mode-switch {
   display: grid;
@@ -2010,6 +2185,16 @@ th {
   width: 180px;
 }
 
+.recruitment-link-card {
+  max-width: 520px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid #e6d7cb;
+  background: #fffaf6;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .export-strip {
     grid-template-columns: 1fr;
@@ -2018,6 +2203,10 @@ th {
 
   .export-form {
     justify-content: flex-start;
+  }
+
+  .dashboard-container {
+    max-width: 100%;
   }
 }
 

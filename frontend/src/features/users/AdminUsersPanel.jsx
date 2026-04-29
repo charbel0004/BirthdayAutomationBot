@@ -1,6 +1,25 @@
 import { UserRow } from '../../components/common';
+import { createDefaultModuleAccess, moduleAccessKeys, moduleAccessLabels } from '../../lib/state';
 
 export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSave }) {
+  const updateRole = (role) => {
+    setDraft((current) => ({
+      ...current,
+      role,
+      moduleAccess: createDefaultModuleAccess(role)
+    }));
+  };
+
+  const toggleModuleAccess = (key, checked) => {
+    setDraft((current) => ({
+      ...current,
+      moduleAccess: {
+        ...current.moduleAccess,
+        [key]: checked
+      }
+    }));
+  };
+
   return (
     <section className="panel">
       <div className="section-head">
@@ -31,12 +50,28 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
         />
         <select
           value={draft.role}
-          onChange={(event) => setDraft({ ...draft, role: event.target.value })}
+          onChange={(event) => updateRole(event.target.value)}
         >
           <option value="member">Member</option>
           <option value="new recruit">New Recruit</option>
           <option value="admin">Admin</option>
         </select>
+        <div className="module-access-editor">
+          <span>Section access</span>
+          <div className="module-access-options">
+            {moduleAccessKeys.map((key) => (
+              <label key={key} className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.role === 'admin' ? true : Boolean(draft.moduleAccess?.[key])}
+                  disabled={draft.role === 'admin'}
+                  onChange={(event) => toggleModuleAccess(key, event.target.checked)}
+                />
+                {moduleAccessLabels[key]}
+              </label>
+            ))}
+          </div>
+        </div>
         <label className="inline-checkbox">
           <input
             type="checkbox"
@@ -54,6 +89,7 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
               <th>Username</th>
               <th>Display name</th>
               <th>Role</th>
+              <th>Section access</th>
               <th>Status</th>
               <th>Reset password</th>
               <th>Actions</th>

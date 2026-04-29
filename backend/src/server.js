@@ -16,6 +16,7 @@ const {
   presentationEvaluationsCollection,
   presentationSlotsCollection,
   presentationTopicsCollection,
+  recruitmentInterestLeadsCollection,
   toObjectId,
   usersCollection
 } = require('./db');
@@ -53,6 +54,7 @@ app.use(cors({
 app.use(express.json());
 
 const USER_ROLES = ['admin', 'member', 'new recruit'];
+const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations'];
 
 function isValidBirthdate(value) {
   return /^\d{2}-\d{2}$/.test(value);
@@ -161,13 +163,64 @@ function isAdminAccount(account) {
   return account?.role === 'admin';
 }
 
+function createDefaultModuleAccess(role = 'member') {
+  if (role === 'admin') {
+    return {
+      bloodDrive: true,
+      recruitment: true,
+      presentations: true
+    };
+  }
+
+  if (role === 'new recruit') {
+    return {
+      bloodDrive: false,
+      recruitment: false,
+      presentations: true
+    };
+  }
+
+  return {
+    bloodDrive: true,
+    recruitment: true,
+    presentations: true
+  };
+}
+
+function normalizeModuleAccess(role = 'member', moduleAccess = {}) {
+  const defaults = createDefaultModuleAccess(role);
+  return MODULE_ACCESS_KEYS.reduce((accumulator, key) => {
+    accumulator[key] = typeof moduleAccess?.[key] === 'boolean' ? moduleAccess[key] : defaults[key];
+    return accumulator;
+  }, {});
+}
+
+function hasModuleAccess(account, moduleKey) {
+  if (isAdminAccount(account)) {
+    return true;
+  }
+
+  return Boolean(normalizeModuleAccess(account?.role, account?.moduleAccess)[moduleKey]);
+}
+
+function requireModuleAccess(moduleKey) {
+  return (req, res, next) => {
+    if (hasModuleAccess(req.account, moduleKey)) {
+      return next();
+    }
+
+    return res.status(403).json({ error: 'You do not have access to this section.' });
+  };
+}
+
 function sanitizeUser(user) {
   return {
     id: String(user._id),
     username: user.username,
     displayName: user.displayName || user.username,
     role: user.role,
-    active: Boolean(user.active)
+    active: Boolean(user.active),
+    moduleAccess: normalizeModuleAccess(user.role, user.moduleAccess)
   };
 }
 
@@ -228,6 +281,33 @@ function sanitizeDonationLocation(location) {
     active: location.active !== false,
     createdAt: location.createdAt ? formatDateTime(location.createdAt) : null,
     updatedAt: location.updatedAt ? formatDateTime(location.updatedAt) : null
+  };
+}
+
+function sanitizeRecruitmentInterestLead(lead) {
+  return {
+    id: String(lead._id),
+    firstName: lead.firstName,
+    lastName: lead.lastName,
+    fullName: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),
+    dateOfBirth: lead.dateOfBirth || '',
+    phoneNumber: lead.phoneNumber || '',
+    callStatus: lead.callStatus || '',
+    lastCallDate: lead.lastCallDate || '',
+    followUpDate: lead.followUpDate || '',
+    notes: lead.notes || '',
+    updatedByName: lead.updatedByName || '',
+    createdAt: lead.createdAt ? formatDateTime(lead.createdAt) : null,
+    updatedAt: lead.updatedAt ? formatDateTime(lead.updatedAt) : null,
+    callHistory: Array.isArray(lead.callHistory)
+      ? lead.callHistory.map((item) => ({
+          callDate: item.callDate || '',
+          callStatus: item.callStatus || '',
+          followUpDate: item.followUpDate || '',
+          notes: item.notes || '',
+          recordedByName: item.recordedByName || ''
+        }))
+      : []
   };
 }
 
@@ -376,6 +456,31 @@ async function findExistingBloodDonor({ firstName, lastName, dateOfBirth, phoneN
   }
 
   return bloodDonorsCollection().findOne(query);
+}
+
+async function findExistingRecruitmentInterestLead({ firstName, lastName, dateOfBirth, phoneNumber, excludeId = null }) {
+  const normalizedFullName = normalizeName(`${firstName} ${lastName}`);
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+  const trimmedPhone = String(phoneNumber || '').trim();
+  const matchClauses = [
+    { normalizedFullName, dateOfBirth: formatDateOnly(dateOfBirth) }
+  ];
+
+  if (normalizedPhone) {
+    matchClauses.push({ normalizedPhoneNumber: normalizedPhone });
+  }
+
+  if (trimmedPhone) {
+    matchClauses.push({ phoneNumber: trimmedPhone });
+  }
+
+  const query = { $or: matchClauses };
+
+  if (excludeId) {
+    query._id = { $ne: excludeId };
+  }
+
+  return recruitmentInterestLeadsCollection().findOne(query);
 }
 
 async function getPresentationTopicById(id) {
@@ -683,19 +788,19 @@ app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body || {};
 
   if (!username || !password) {
-    return res.status(400).json({ error: 'username and password are required' });
+    return res.status(400).json({ error: 'Please enter both your username and password.' });
   }
 
   const user = await usersCollection().findOne({ username: String(username).trim() });
 
   if (!user || user.active === false) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+    return res.status(401).json({ error: 'The username or password you entered is incorrect.' });
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
 
   if (!valid) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+    return res.status(401).json({ error: 'The username or password you entered is incorrect.' });
   }
 
   const token = signAuthToken(user);
@@ -709,22 +814,22 @@ app.post('/api/auth/signup', async (req, res) => {
   const { username, password, displayName, birthdate, role = 'member' } = req.body || {};
 
   if (!username || !password || !displayName || !birthdate) {
-    return res.status(400).json({ error: 'username, displayName, password, birthdate, and role are required' });
+    return res.status(400).json({ error: 'Please complete all required signup fields before continuing.' });
   }
 
   if (!['member', 'new recruit'].includes(role)) {
-    return res.status(400).json({ error: 'role must be member or new recruit' });
+    return res.status(400).json({ error: 'Please select either Member or New Recruit.' });
   }
 
   if (!isValidBirthdate(birthdate)) {
-    return res.status(400).json({ error: 'birthdate must use MM-DD format' });
+    return res.status(400).json({ error: 'Please enter a valid date of birth.' });
   }
 
   const trimmedUsername = String(username).trim();
   const trimmedDisplayName = String(displayName).trim();
 
   if (!trimmedUsername || !trimmedDisplayName) {
-    return res.status(400).json({ error: 'username and displayName are required' });
+    return res.status(400).json({ error: 'Please complete both the username and full name fields.' });
   }
 
   const [existingUser, duplicateBirthday] = await Promise.all([
@@ -736,11 +841,11 @@ app.post('/api/auth/signup', async (req, res) => {
   ]);
 
   if (existingUser) {
-    return res.status(409).json({ error: 'Username already exists' });
+    return res.status(409).json({ error: 'This username is already in use. Please choose another one.' });
   }
 
   if (duplicateBirthday) {
-    return res.status(409).json({ error: 'This birthday entry already exists' });
+    return res.status(409).json({ error: 'A birthday record with these details already exists.' });
   }
 
   const createdAt = now();
@@ -749,6 +854,7 @@ app.post('/api/auth/signup', async (req, res) => {
     passwordHash: await bcrypt.hash(String(password), 10),
     displayName: trimmedDisplayName,
     role,
+    moduleAccess: normalizeModuleAccess(role),
     active: true,
     createdAt,
     updatedAt: createdAt
@@ -771,7 +877,7 @@ app.post('/api/auth/signup', async (req, res) => {
     await usersCollection().deleteOne({ _id: userResult.insertedId });
 
     if (error?.code === 11000) {
-      return res.status(409).json({ error: 'This birthday entry already exists' });
+      return res.status(409).json({ error: 'A birthday record with these details already exists.' });
     }
 
     throw error;
@@ -786,7 +892,54 @@ app.post('/api/auth/signup', async (req, res) => {
   });
 });
 
+app.post('/api/recruitment-interest', async (req, res) => {
+  const { firstName, lastName, phoneNumber, dateOfBirth } = req.body || {};
+  const trimmedFirstName = String(firstName || '').trim();
+  const trimmedLastName = String(lastName || '').trim();
+  const trimmedPhoneNumber = String(phoneNumber || '').trim();
+
+  if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth) {
+    return res.status(400).json({ error: 'Please complete first name, last name, phone number, and date of birth.' });
+  }
+
+  const duplicate = await findExistingRecruitmentInterestLead({
+    firstName: trimmedFirstName,
+    lastName: trimmedLastName,
+    dateOfBirth,
+    phoneNumber: trimmedPhoneNumber
+  });
+
+  if (duplicate) {
+    return res.status(409).json({ error: 'This person is already registered in the recruitment interest list.' });
+  }
+
+  const createdAt = now();
+  const payload = {
+    firstName: trimmedFirstName,
+    lastName: trimmedLastName,
+    normalizedFullName: normalizeName(`${trimmedFirstName} ${trimmedLastName}`),
+    dateOfBirth: formatDateOnly(dateOfBirth),
+    phoneNumber: trimmedPhoneNumber,
+    normalizedPhoneNumber: normalizePhoneNumber(trimmedPhoneNumber),
+    callStatus: '',
+    lastCallDate: '',
+    followUpDate: '',
+    notes: '',
+    updatedByName: '',
+    callHistory: [],
+    createdAt,
+    updatedAt: createdAt
+  };
+
+  const result = await recruitmentInterestLeadsCollection().insertOne(payload);
+  res.status(201).json(sanitizeRecruitmentInterestLead({ ...payload, _id: result.insertedId }));
+});
+
 app.use('/api', authMiddleware, requireAuthenticatedUser);
+
+const requireBloodDriveAccess = requireModuleAccess('bloodDrive');
+const requireRecruitmentAccess = requireModuleAccess('recruitment');
+const requirePresentationsAccess = requireModuleAccess('presentations');
 
 app.get('/api/me', async (req, res) => {
   const [summary, telegram, ownBirthdays] = await Promise.all([
@@ -816,21 +969,28 @@ app.get('/api/users', requireRole('admin'), async (req, res) => {
 });
 
 app.post('/api/users', requireRole('admin'), async (req, res) => {
-  const { username, password, displayName, role = 'member', active = true } = req.body || {};
+  const {
+    username,
+    password,
+    displayName,
+    role = 'member',
+    active = true,
+    moduleAccess = createDefaultModuleAccess(role)
+  } = req.body || {};
 
   if (!username || !password || !displayName) {
-    return res.status(400).json({ error: 'username, displayName, and password are required' });
+    return res.status(400).json({ error: 'Please complete the username, full name, and password fields.' });
   }
 
   if (!USER_ROLES.includes(role)) {
-    return res.status(400).json({ error: 'role must be admin, member, or new recruit' });
+    return res.status(400).json({ error: 'Please choose a valid user role.' });
   }
 
   const trimmedUsername = String(username).trim();
   const existing = await usersCollection().findOne({ username: trimmedUsername });
 
   if (existing) {
-    return res.status(409).json({ error: 'Username already exists' });
+    return res.status(409).json({ error: 'This username is already in use. Please choose another one.' });
   }
 
   const user = {
@@ -838,6 +998,7 @@ app.post('/api/users', requireRole('admin'), async (req, res) => {
     passwordHash: await bcrypt.hash(String(password), 10),
     displayName: String(displayName).trim(),
     role,
+    moduleAccess: normalizeModuleAccess(role, moduleAccess),
     active: Boolean(active),
     createdAt: now(),
     updatedAt: now()
@@ -860,8 +1021,9 @@ app.put('/api/users/:id', requireRole('admin'), async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  const { username, password, displayName, role, active } = req.body || {};
+  const { username, password, displayName, role, active, moduleAccess } = req.body || {};
   const updates = { updatedAt: now() };
+  let resolvedRole = existing.role;
 
   if (typeof username === 'string' && username.trim()) {
     const trimmedUsername = username.trim();
@@ -891,6 +1053,14 @@ app.put('/api/users/:id', requireRole('admin'), async (req, res) => {
     }
 
     updates.role = role;
+    resolvedRole = role;
+  }
+
+  if (moduleAccess !== undefined || role !== undefined) {
+    updates.moduleAccess = normalizeModuleAccess(
+      resolvedRole,
+      moduleAccess !== undefined ? moduleAccess : existing.moduleAccess
+    );
   }
 
   if (typeof active === 'boolean') {
@@ -912,7 +1082,7 @@ app.post('/api/birthdays', async (req, res) => {
   const { userId, name, birthdate, active = true } = req.body || {};
 
   if (!birthdate || !isValidBirthdate(birthdate)) {
-    return res.status(400).json({ error: 'birthdate must use MM-DD format' });
+    return res.status(400).json({ error: 'Please enter a valid birthday in MM-DD format.' });
   }
 
   const entryUserId = isAdminAccount(req.account) && userId ? toObjectId(userId) : req.account._id;
@@ -920,13 +1090,13 @@ app.post('/api/birthdays', async (req, res) => {
   const nextName = String(name || fallbackName).trim();
 
   if (!nextName) {
-    return res.status(400).json({ error: 'name is required' });
+    return res.status(400).json({ error: 'Please enter a name before saving.' });
   }
 
   if (!isAdminAccount(req.account)) {
     const existingOwnBirthday = await birthdaysCollection().findOne({ userId: req.account._id });
     if (existingOwnBirthday) {
-      return res.status(409).json({ error: 'Member already has a saved birthday entry' });
+      return res.status(409).json({ error: 'You already have a saved birthday record.' });
     }
   }
 
@@ -936,7 +1106,7 @@ app.post('/api/birthdays', async (req, res) => {
   });
 
   if (duplicate) {
-    return res.status(409).json({ error: 'This birthday entry already exists' });
+    return res.status(409).json({ error: 'A birthday record with these details already exists.' });
   }
 
   const entry = {
@@ -958,11 +1128,11 @@ app.put('/api/birthdays/:id', async (req, res) => {
   const birthday = await getBirthdayById(req.params.id);
 
   if (!birthday) {
-    return res.status(404).json({ error: 'Birthday entry not found' });
+    return res.status(404).json({ error: 'The selected birthday record could not be found.' });
   }
 
   if (!isAdminAccount(req.account) && String(birthday.userId || '') !== String(req.account._id)) {
-    return res.status(403).json({ error: 'Forbidden' });
+    return res.status(403).json({ error: 'You do not have permission to update this birthday record.' });
   }
 
   const { name, birthdate, active } = req.body || {};
@@ -970,7 +1140,7 @@ app.put('/api/birthdays/:id', async (req, res) => {
 
   if (birthdate !== undefined) {
     if (!isValidBirthdate(birthdate)) {
-      return res.status(400).json({ error: 'birthdate must use MM-DD format' });
+      return res.status(400).json({ error: 'Please enter a valid birthday in MM-DD format.' });
     }
     updates.birthdate = birthdate;
   }
@@ -993,7 +1163,7 @@ app.put('/api/birthdays/:id', async (req, res) => {
   });
 
   if (duplicate) {
-    return res.status(409).json({ error: 'This birthday entry already exists' });
+    return res.status(409).json({ error: 'A birthday record with these details already exists.' });
   }
 
   await birthdaysCollection().updateOne({ _id: birthday._id }, { $set: updates });
@@ -1005,18 +1175,18 @@ app.delete('/api/birthdays/:id', async (req, res) => {
   const birthday = await getBirthdayById(req.params.id);
 
   if (!birthday) {
-    return res.status(404).json({ error: 'Birthday entry not found' });
+    return res.status(404).json({ error: 'The selected birthday record could not be found.' });
   }
 
   if (!isAdminAccount(req.account) && String(birthday.userId || '') !== String(req.account._id)) {
-    return res.status(403).json({ error: 'Forbidden' });
+    return res.status(403).json({ error: 'You do not have permission to delete this birthday record.' });
   }
 
   await birthdaysCollection().deleteOne({ _id: birthday._id });
   return res.status(204).send();
 });
 
-app.get('/api/blood-drive/donors', async (req, res) => {
+app.get('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => {
   const today = formatDateOnly(now());
   const nameFilter = String(req.query.name || '').trim();
   const locationFilter = String(req.query.location || '').trim();
@@ -1066,7 +1236,7 @@ app.get('/api/blood-drive/donors', async (req, res) => {
   );
 });
 
-app.get('/api/blood-drive/stats', async (req, res) => {
+app.get('/api/blood-drive/stats', requireBloodDriveAccess, async (req, res) => {
   const today = formatDateOnly(now());
   const [total, eligible, upcoming, locationRows, ageRows] = await Promise.all([
     bloodDonorsCollection().countDocuments(),
@@ -1108,7 +1278,7 @@ app.get('/api/blood-drive/stats', async (req, res) => {
   });
 });
 
-app.get('/api/blood-drive/locations', async (req, res) => {
+app.get('/api/blood-drive/locations', requireBloodDriveAccess, async (req, res) => {
   const activeOnly = String(req.query.activeOnly || 'true') !== 'false';
   const query = activeOnly ? { active: true } : {};
   const locations = await donationLocationsCollection().find(query).sort({ active: -1, name: 1 }).toArray();
@@ -1120,7 +1290,7 @@ app.post('/api/blood-drive/locations', requireRole('admin'), async (req, res) =>
   const trimmedName = String(name || '').trim();
 
   if (!trimmedName) {
-    return res.status(400).json({ error: 'name is required' });
+    return res.status(400).json({ error: 'Please enter a location name.' });
   }
 
   const payload = {
@@ -1136,7 +1306,7 @@ app.post('/api/blood-drive/locations', requireRole('admin'), async (req, res) =>
     return res.status(201).json(sanitizeDonationLocation({ ...payload, _id: result.insertedId }));
   } catch (error) {
     if (error?.code === 11000) {
-      return res.status(409).json({ error: 'This donation location already exists' });
+      return res.status(409).json({ error: 'This donation location already exists.' });
     }
 
     throw error;
@@ -1147,13 +1317,13 @@ app.put('/api/blood-drive/locations/:id', requireRole('admin'), async (req, res)
   const locationId = toObjectId(req.params.id);
 
   if (!locationId) {
-    return res.status(400).json({ error: 'Invalid location id' });
+    return res.status(400).json({ error: 'The selected donation location is invalid.' });
   }
 
   const existing = await donationLocationsCollection().findOne({ _id: locationId });
 
   if (!existing) {
-    return res.status(404).json({ error: 'Donation location not found' });
+    return res.status(404).json({ error: 'The selected donation location could not be found.' });
   }
 
   const { name, active } = req.body || {};
@@ -1167,7 +1337,7 @@ app.put('/api/blood-drive/locations/:id', requireRole('admin'), async (req, res)
     });
 
     if (collision) {
-      return res.status(409).json({ error: 'This donation location already exists' });
+      return res.status(409).json({ error: 'This donation location already exists.' });
     }
 
     updates.name = trimmedName;
@@ -1183,7 +1353,7 @@ app.put('/api/blood-drive/locations/:id', requireRole('admin'), async (req, res)
   res.json(sanitizeDonationLocation(updated));
 });
 
-app.get('/api/blood-drive/donors/export', requireRole('admin'), async (req, res) => {
+app.get('/api/blood-drive/donors/export', requireRole('admin'), requireBloodDriveAccess, async (req, res) => {
   const requestedDate = String(req.query.date || formatDateOnly(now())).trim();
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
@@ -1253,7 +1423,77 @@ app.get('/api/blood-drive/donors/export', requireRole('admin'), async (req, res)
   res.send(workbook);
 });
 
-app.get('/api/blood-drive/my-record', async (req, res) => {
+app.get('/api/recruitment-interest', requireRecruitmentAccess, async (req, res) => {
+  const nameFilter = String(req.query.name || '').trim();
+  const statusFilter = String(req.query.status || '').trim();
+  const query = {};
+
+  if (nameFilter) {
+    query.normalizedFullName = { $regex: escapeRegex(normalizeName(nameFilter)) };
+  }
+
+  if (statusFilter) {
+    query.callStatus = statusFilter;
+  }
+
+  const leads = await recruitmentInterestLeadsCollection()
+    .find(query)
+    .sort({ createdAt: -1, lastName: 1, firstName: 1 })
+    .toArray();
+
+  res.json(leads.map(sanitizeRecruitmentInterestLead));
+});
+
+app.put('/api/recruitment-interest/:id/contact', requireRecruitmentAccess, async (req, res) => {
+  const leadId = toObjectId(req.params.id);
+
+  if (!leadId) {
+    return res.status(400).json({ error: 'The selected recruitment record is invalid.' });
+  }
+
+  const lead = await recruitmentInterestLeadsCollection().findOne({ _id: leadId });
+
+  if (!lead) {
+    return res.status(404).json({ error: 'The selected recruitment record could not be found.' });
+  }
+
+  const { callStatus, followUpDate, notes } = req.body || {};
+  const normalizedStatus = typeof callStatus === 'string' ? callStatus.trim() : '';
+  const callDate = formatDateOnly(now());
+
+  if (!normalizedStatus) {
+    return res.status(400).json({ error: 'Please select a call result before saving.' });
+  }
+
+  const normalizedFollowUpDate = ['follow-up', 'scheduled'].includes(normalizedStatus) && followUpDate
+    ? formatDateOnly(followUpDate)
+    : '';
+
+  const updates = {
+    callStatus: normalizedStatus,
+    followUpDate: normalizedFollowUpDate,
+    lastCallDate: callDate,
+    notes: typeof notes === 'string' ? notes.trim() : (lead.notes || ''),
+    updatedByName: req.account.displayName || req.account.username,
+    updatedAt: now(),
+    callHistory: [
+      {
+        callDate,
+        callStatus: normalizedStatus,
+        followUpDate: normalizedFollowUpDate,
+        notes: typeof notes === 'string' ? notes.trim() : (lead.notes || ''),
+        recordedByName: req.account.displayName || req.account.username
+      },
+      ...(Array.isArray(lead.callHistory) ? lead.callHistory : [])
+    ]
+  };
+
+  await recruitmentInterestLeadsCollection().updateOne({ _id: leadId }, { $set: updates });
+  const updated = await recruitmentInterestLeadsCollection().findOne({ _id: leadId });
+  res.json(sanitizeRecruitmentInterestLead(updated));
+});
+
+app.get('/api/blood-drive/my-record', requireBloodDriveAccess, async (req, res) => {
   const donor = await bloodDonorsCollection().findOne({ userId: req.account._id });
 
   if (!donor) {
@@ -1264,7 +1504,7 @@ app.get('/api/blood-drive/my-record', async (req, res) => {
   return res.json(sanitizeBloodDonor({ ...donor, isEligible: donor.nextEligibleDonationDate <= today }));
 });
 
-app.post('/api/blood-drive/donors/prospects', async (req, res) => {
+app.post('/api/blood-drive/donors/prospects', requireBloodDriveAccess, async (req, res) => {
   const { firstName, lastName, dateOfBirth, phoneNumber, notes } = req.body || {};
   const trimmedFirstName = String(firstName || '').trim();
   const trimmedLastName = String(lastName || '').trim();
@@ -1273,13 +1513,13 @@ app.post('/api/blood-drive/donors/prospects', async (req, res) => {
   if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth) {
     return res
       .status(400)
-      .json({ error: 'firstName, lastName, dateOfBirth, and phoneNumber are required' });
+      .json({ error: 'Please complete first name, last name, phone number, and date of birth.' });
   }
 
   const numericAge = calculateAgeFromDateOfBirth(dateOfBirth);
 
   if (!Number.isFinite(numericAge) || numericAge < 18 || numericAge > 75) {
-    return res.status(400).json({ error: 'dateOfBirth must produce an age between 18 and 75' });
+    return res.status(400).json({ error: 'The date of birth must correspond to an age between 18 and 75.' });
   }
 
   const duplicate = await findExistingBloodDonor({
@@ -1289,7 +1529,7 @@ app.post('/api/blood-drive/donors/prospects', async (req, res) => {
     phoneNumber: trimmedPhoneNumber
   });
   if (duplicate) {
-    return res.status(409).json({ error: 'This donor already exists in the repository. Use the existing donor record instead of adding a new one.' });
+    return res.status(409).json({ error: 'This donor is already in the repository. Please use the existing record instead of creating a new one.' });
   }
 
   const currentDate = now();
@@ -1330,19 +1570,19 @@ app.post('/api/blood-drive/donors/prospects', async (req, res) => {
   );
 });
 
-app.post('/api/blood-drive/donors', async (req, res) => {
+app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => {
   const { donorId, firstName, lastName, dateOfBirth, phoneNumber, location, notes } = req.body || {};
 
   if (!firstName || !lastName || !phoneNumber || !location || !dateOfBirth) {
     return res
       .status(400)
-      .json({ error: 'firstName, lastName, dateOfBirth, phoneNumber, and location are required' });
+      .json({ error: 'Please complete first name, last name, date of birth, phone number, and location.' });
   }
 
   const numericAge = calculateAgeFromDateOfBirth(dateOfBirth);
 
   if (!Number.isFinite(numericAge) || numericAge < 18 || numericAge > 75) {
-    return res.status(400).json({ error: 'dateOfBirth must produce an age between 18 and 75' });
+    return res.status(400).json({ error: 'The date of birth must correspond to an age between 18 and 75.' });
   }
 
   const currentDate = now();
@@ -1375,7 +1615,7 @@ app.post('/api/blood-drive/donors', async (req, res) => {
   if (donorId) {
     const donor = await getBloodDonorById(donorId);
     if (!donor) {
-      return res.status(404).json({ error: 'Blood donor record not found' });
+      return res.status(404).json({ error: 'The selected blood donor record could not be found.' });
     }
 
     const duplicate = await findExistingBloodDonor({
@@ -1387,7 +1627,7 @@ app.post('/api/blood-drive/donors', async (req, res) => {
     });
 
     if (duplicate) {
-      return res.status(409).json({ error: 'These donor details match another existing donor' });
+      return res.status(409).json({ error: 'These donor details already match another record in the repository.' });
     }
 
     const updates = {
@@ -1488,11 +1728,11 @@ app.post('/api/blood-drive/donors', async (req, res) => {
   );
 });
 
-app.put('/api/blood-drive/donors/:id/contact', async (req, res) => {
+app.put('/api/blood-drive/donors/:id/contact', requireBloodDriveAccess, async (req, res) => {
   const donor = await getBloodDonorById(req.params.id);
 
   if (!donor) {
-    return res.status(404).json({ error: 'Blood donor record not found' });
+    return res.status(404).json({ error: 'The selected blood donor record could not be found.' });
   }
 
   const { contacted, willingToDonate, callStatus, upcomingDonationDate, notes } = req.body || {};
@@ -1501,7 +1741,7 @@ app.put('/api/blood-drive/donors/:id/contact', async (req, res) => {
   const normalizedStatus = typeof callStatus === 'string' ? callStatus.trim() : '';
   const derivedCallStatus = normalizedStatus || (contacted ? (willingToDonate ? 'upcoming' : 'not-willing') : '');
   if (derivedCallStatus === 'upcoming' && !upcomingDonationDate) {
-    return res.status(400).json({ error: 'upcomingDonationDate is required when the donor is willing to come later' });
+    return res.status(400).json({ error: 'Please select an upcoming donation date when the donor plans to come later.' });
   }
   const normalizedUpcomingDonationDate = derivedCallStatus === 'upcoming' && upcomingDonationDate
     ? formatDateOnly(upcomingDonationDate)
@@ -1539,11 +1779,11 @@ app.put('/api/blood-drive/donors/:id/contact', async (req, res) => {
   res.json(sanitizeBloodDonor({ ...updated, isEligible: updated.nextEligibleDonationDate <= formatDateOnly(now()) }));
 });
 
-app.put('/api/blood-drive/donors/:id', requireRole('admin'), async (req, res) => {
+app.put('/api/blood-drive/donors/:id', requireRole('admin'), requireBloodDriveAccess, async (req, res) => {
   const donor = await getBloodDonorById(req.params.id);
 
   if (!donor) {
-    return res.status(404).json({ error: 'Blood donor record not found' });
+    return res.status(404).json({ error: 'The selected blood donor record could not be found.' });
   }
 
   const { firstName, lastName, dateOfBirth, phoneNumber, location, contacted, willingToDonate, notes } = req.body || {};
@@ -1560,7 +1800,7 @@ app.put('/api/blood-drive/donors/:id', requireRole('admin'), async (req, res) =>
   if (dateOfBirth !== undefined) {
     const numericAge = calculateAgeFromDateOfBirth(dateOfBirth);
     if (!Number.isFinite(numericAge) || numericAge < 18 || numericAge > 75) {
-      return res.status(400).json({ error: 'dateOfBirth must produce an age between 18 and 75' });
+      return res.status(400).json({ error: 'The date of birth must correspond to an age between 18 and 75.' });
     }
     updates.dateOfBirth = formatDateOnly(dateOfBirth);
   }
@@ -1603,7 +1843,7 @@ app.put('/api/blood-drive/donors/:id', requireRole('admin'), async (req, res) =>
   });
 
   if (duplicate) {
-    return res.status(409).json({ error: 'These donor details match another existing donor' });
+    return res.status(409).json({ error: 'These donor details already match another record in the repository.' });
   }
 
   updates.normalizedFullName = normalizeName(`${nextFirstName} ${nextLastName}`);
@@ -1613,18 +1853,18 @@ app.put('/api/blood-drive/donors/:id', requireRole('admin'), async (req, res) =>
   res.json(sanitizeBloodDonor({ ...updated, isEligible: updated.nextEligibleDonationDate <= formatDateOnly(now()) }));
 });
 
-app.delete('/api/blood-drive/donors/:id', requireRole('admin'), async (req, res) => {
+app.delete('/api/blood-drive/donors/:id', requireRole('admin'), requireBloodDriveAccess, async (req, res) => {
   const donor = await getBloodDonorById(req.params.id);
 
   if (!donor) {
-    return res.status(404).json({ error: 'Blood donor record not found' });
+    return res.status(404).json({ error: 'The selected blood donor record could not be found.' });
   }
 
   await bloodDonorsCollection().deleteOne({ _id: donor._id });
   return res.status(204).send();
 });
 
-app.get('/api/presentations/dashboard', async (req, res) => {
+app.get('/api/presentations/dashboard', requirePresentationsAccess, async (req, res) => {
   try {
     const dashboard = await buildPresentationDashboard(req.account, { year: req.query.year });
     res.json(dashboard);
@@ -1634,7 +1874,7 @@ app.get('/api/presentations/dashboard', async (req, res) => {
   }
 });
 
-app.get('/api/presentations/report', requireRole('admin'), async (req, res) => {
+app.get('/api/presentations/report', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   try {
     const report = await buildPresentationReport({ year: req.query.year });
     res.json(report);
@@ -1644,7 +1884,7 @@ app.get('/api/presentations/report', requireRole('admin'), async (req, res) => {
   }
 });
 
-app.post('/api/presentations/spin', requireRole('new recruit'), async (req, res) => {
+app.post('/api/presentations/spin', requireRole('new recruit'), requirePresentationsAccess, async (req, res) => {
   const existingTopic = await presentationTopicsCollection().findOne({ assignedTo: req.account._id });
 
   if (existingTopic) {
@@ -1673,7 +1913,7 @@ app.post('/api/presentations/spin', requireRole('new recruit'), async (req, res)
   res.json({ topic: sanitizePresentationTopic(assignedTopic) });
 });
 
-app.post('/api/presentations/book-slot', requireRole('new recruit'), async (req, res) => {
+app.post('/api/presentations/book-slot', requireRole('new recruit'), requirePresentationsAccess, async (req, res) => {
   const { slotId } = req.body || {};
   const nextSlotId = toObjectId(slotId);
 
@@ -1726,7 +1966,7 @@ app.post('/api/presentations/book-slot', requireRole('new recruit'), async (req,
   });
 });
 
-app.post('/api/presentations/topics', requireRole('admin'), async (req, res) => {
+app.post('/api/presentations/topics', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   const { title, description, topics } = req.body || {};
 
   const docs = Array.isArray(topics)
@@ -1762,7 +2002,7 @@ app.post('/api/presentations/topics', requireRole('admin'), async (req, res) => 
   }
 });
 
-app.delete('/api/presentations/topics/:id', requireRole('admin'), async (req, res) => {
+app.delete('/api/presentations/topics/:id', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   const topic = await getPresentationTopicById(req.params.id);
 
   if (!topic) {
@@ -1777,7 +2017,7 @@ app.delete('/api/presentations/topics/:id', requireRole('admin'), async (req, re
   res.status(204).send();
 });
 
-app.post('/api/presentations/slots', requireRole('admin'), async (req, res) => {
+app.post('/api/presentations/slots', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   const { rangeStartAt, rangeEndAt, durationMinutes } = req.body || {};
 
   if (!rangeStartAt || !rangeEndAt || !durationMinutes) {
@@ -1826,7 +2066,7 @@ app.post('/api/presentations/slots', requireRole('admin'), async (req, res) => {
   }
 });
 
-app.delete('/api/presentations/slots/:id', requireRole('admin'), async (req, res) => {
+app.delete('/api/presentations/slots/:id', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   const slot = await getPresentationSlotById(req.params.id);
 
   if (!slot) {
@@ -1842,7 +2082,7 @@ app.delete('/api/presentations/slots/:id', requireRole('admin'), async (req, res
   res.status(204).send();
 });
 
-app.post('/api/presentations/criteria', requireRole('admin'), async (req, res) => {
+app.post('/api/presentations/criteria', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   const { title, description, order, isActive = true } = req.body || {};
   const nextTitle = String(title || '').trim();
   const nextDescription = String(description || '').trim();
@@ -1876,7 +2116,7 @@ app.post('/api/presentations/criteria', requireRole('admin'), async (req, res) =
   }
 });
 
-app.patch('/api/presentations/presenters/:presenterId/allow-second-attempt', requireRole('admin'), async (req, res) => {
+app.patch('/api/presentations/presenters/:presenterId/allow-second-attempt', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   try {
     const presenterId = toObjectId(req.params.presenterId);
 
@@ -1904,7 +2144,7 @@ app.patch('/api/presentations/presenters/:presenterId/allow-second-attempt', req
   }
 });
 
-app.put('/api/presentations/criteria/:id', requireRole('admin'), async (req, res) => {
+app.put('/api/presentations/criteria/:id', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   const criterion = await getPresentationCriterionById(req.params.id);
 
   if (!criterion) {
@@ -1948,7 +2188,7 @@ app.put('/api/presentations/criteria/:id', requireRole('admin'), async (req, res
   res.json(sanitizePresentationCriterion(updated));
 });
 
-app.delete('/api/presentations/criteria/:id', requireRole('admin'), async (req, res) => {
+app.delete('/api/presentations/criteria/:id', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
   const criterion = await getPresentationCriterionById(req.params.id);
 
   if (!criterion) {
@@ -1959,7 +2199,7 @@ app.delete('/api/presentations/criteria/:id', requireRole('admin'), async (req, 
   res.status(204).send();
 });
 
-app.put('/api/presentations/evaluations/:presenterId', requireRole('admin', 'member'), async (req, res) => {
+app.put('/api/presentations/evaluations/:presenterId', requireRole('admin', 'member'), requirePresentationsAccess, async (req, res) => {
   try {
     const presenterId = toObjectId(req.params.presenterId);
     const { scores, comment, attempt } = req.body || {};

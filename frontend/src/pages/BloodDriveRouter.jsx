@@ -85,21 +85,6 @@ export default function BloodDriveRouter({
     );
   }
 
-  if (page === 'donation-locations') {
-    return (
-      <BloodDrivePage
-        donorStats={donorStats}
-        onOpenCollection={onOpenCollection}
-        onOpenEligibleDonors={onOpenEligibleDonors}
-        onOpenRepository={onOpenRepository}
-        onOpenLocations={onOpenLocations}
-        onExportDonations={onExportDonations}
-        onBack={onBackToHub}
-        isAdmin={isAdmin}
-      />
-    );
-  }
-
   return (
     <BloodDrivePage
       donorStats={donorStats}

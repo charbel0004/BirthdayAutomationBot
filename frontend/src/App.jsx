@@ -5,6 +5,7 @@ import {
   downloadFile,
   emptyBloodDriveForm,
   emptyDonationLocation,
+  emptyRecruitmentInterestForm,
   emptyPresentationCriterion,
   emptyPresentationScoreForm,
   emptyPresentationSlot,
@@ -21,6 +22,7 @@ import {
   createEmptyPresentationData,
   createEmptyPresentationReport,
   createEmptyUser,
+  hasModuleAccess,
   getHashForPage,
   getPageFromHash,
   pages
@@ -29,15 +31,17 @@ import {
   AppLoader,
   BirthdayOverlay,
   BloodDriveOverlay,
-  LoginPage
+  LoginPage,
+  RecruitmentInterestPage
 } from './components/common';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const BloodDriveRouter = lazy(() => import('./pages/BloodDriveRouter'));
+const RecruitmentRouter = lazy(() => import('./pages/RecruitmentRouter'));
 const PresentationRouter = lazy(() => import('./pages/PresentationRouter'));
 
 export default function App() {
-  const bloodDriveRefreshMs = 10000;
+  const bloodDriveRefreshMs = 20000;
   const emptyRepositoryDonor = { firstName: '', lastName: '', dateOfBirth: '', phoneNumber: '', notes: '' };
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || '');
   const [loading, setLoading] = useState(true);
@@ -68,6 +72,15 @@ export default function App() {
   const [repositoryDonorDraft, setRepositoryDonorDraft] = useState(emptyRepositoryDonor);
   const [repositoryDonorError, setRepositoryDonorError] = useState('');
   const [donationLocationDraft, setDonationLocationDraft] = useState(emptyDonationLocation);
+  const [recruitmentLeadForm, setRecruitmentLeadForm] = useState(emptyRecruitmentInterestForm);
+  const [recruitmentLeadSaving, setRecruitmentLeadSaving] = useState(false);
+  const [recruitmentLeadError, setRecruitmentLeadError] = useState('');
+  const [recruitmentLeadSuccess, setRecruitmentLeadSuccess] = useState('');
+  const [recruitmentLeadDraft, setRecruitmentLeadDraft] = useState(emptyRecruitmentInterestForm);
+  const [recruitmentLeadCreateSaving, setRecruitmentLeadCreateSaving] = useState(false);
+  const [recruitmentLeadCreateError, setRecruitmentLeadCreateError] = useState('');
+  const [recruitmentFilters, setRecruitmentFilters] = useState({ name: '', status: '' });
+  const [recruitmentLeads, setRecruitmentLeads] = useState([]);
   const [donorStats, setDonorStats] = useState(createEmptyDonorStats);
   const [donationLocations, setDonationLocations] = useState([]);
   const [presentationData, setPresentationData] = useState(() => createEmptyPresentationData(getCurrentYear()));
@@ -86,6 +99,15 @@ export default function App() {
     showNotice.timeoutId = window.setTimeout(() => setNotice(''), 2800);
   };
 
+  const formatBirthdayRunMessage = (matched = []) => {
+    if (!matched.length) {
+      return 'Birthday check completed. No birthdays were scheduled for today.';
+    }
+
+    const names = matched.map((item) => item.name).join(', ');
+    return `Birthday check completed. Today's birthdays: ${names}.`;
+  };
+
   const buildDonorQuery = (filters, eligibleOnly = true, options = {}) => {
     const params = new URLSearchParams();
     if (filters.name.trim()) params.set('name', filters.name.trim());
@@ -102,8 +124,22 @@ export default function App() {
     return `${path}?${params.toString()}`;
   };
 
-  const isBloodDrivePage = [pages.bloodDrive, pages.eligibleDonors, pages.repository, pages.donationLocations].includes(page);
+  const isBloodDrivePage = [
+    pages.bloodDrive,
+    pages.eligibleDonors,
+    pages.repository,
+    pages.donationLocations
+  ].includes(page);
+  const isRecruitmentPage = [
+    pages.recruitment,
+    pages.recruitmentRepository,
+    pages.recruitmentCallCenter
+  ].includes(page);
   const isPresentationPage = page === pages.presentations;
+  const publicRecruitmentFormUrl = 'https://youth.lrcy-jbeil.online/#/recruitment-interest';
+  const canAccessBloodDrive = hasModuleAccess(me?.user, 'bloodDrive');
+  const canAccessRecruitment = hasModuleAccess(me?.user, 'recruitment');
+  const canAccessPresentations = hasModuleAccess(me?.user, 'presentations');
 
   const loadData = async () => {
     setLoading(true);
@@ -113,12 +149,13 @@ export default function App() {
       const mePayload = await api('/api/me', { token });
       const isAdmin = mePayload.user.role === 'admin';
       const isRecruit = mePayload.user.role === 'new recruit';
+      const canLoadPresentations = hasModuleAccess(mePayload.user, 'presentations');
 
       const requestEntries = [
         ['birthdays', api('/api/birthdays', { token })]
       ];
 
-      if (isRecruit) {
+      if (canLoadPresentations && isRecruit) {
         requestEntries.push(['presentation', api(buildPresentationQuery('/api/presentations/dashboard'), { token })]);
       }
 
@@ -155,6 +192,10 @@ export default function App() {
       setRepositoryDonorDraft(emptyRepositoryDonor);
       setRepositoryDonorError('');
       setDonationLocationDraft(emptyDonationLocation);
+      setRecruitmentLeadDraft(emptyRecruitmentInterestForm);
+      setRecruitmentLeadCreateError('');
+      setRecruitmentFilters({ name: '', status: '' });
+      setRecruitmentLeads([]);
 
       if (isAdmin) {
         setUsers(payloads.users || []);
@@ -243,17 +284,35 @@ export default function App() {
     return payload;
   };
 
+  const buildRecruitmentQuery = (filters) => {
+    const params = new URLSearchParams();
+    if (filters.name.trim()) params.set('name', filters.name.trim());
+    if (filters.status.trim()) params.set('status', filters.status.trim());
+    const query = params.toString();
+    return `/api/recruitment-interest${query ? `?${query}` : ''}`;
+  };
+
+  const refreshRecruitmentLeads = async (filters = recruitmentFilters) => {
+    const payload = await api(buildRecruitmentQuery(filters), { token });
+    setRecruitmentLeads(payload);
+    return payload;
+  };
+
   const refreshBloodDrive = async ({ includeRepository = false, includeAllLocations = false } = {}) => {
     const requests = [
       api('/api/blood-drive/stats', { token }),
-      api(buildDonorQuery(donorFilters, true), { token }),
-      api(`/api/blood-drive/locations${includeAllLocations ? '?activeOnly=false' : ''}`, { token })
+      api(buildDonorQuery(donorFilters, true), { token })
     ];
+    if (includeAllLocations) {
+      requests.push(api('/api/blood-drive/locations?activeOnly=false', { token }));
+    }
     if (includeRepository) requests.push(api(buildDonorQuery(repositoryFilters, false), { token }));
     const [statsPayload, eligiblePayload, locationsPayload, repositoryPayload] = await Promise.all(requests);
     setDonorStats(statsPayload);
     setEligibleDonors(eligiblePayload);
-    setDonationLocations(locationsPayload);
+    if (includeAllLocations && locationsPayload) {
+      setDonationLocations(locationsPayload);
+    }
     if (repositoryPayload) setAllDonors(repositoryPayload);
   };
 
@@ -283,19 +342,28 @@ export default function App() {
       return;
     }
 
+    if ((isBloodDrivePage && !canAccessBloodDrive) || (isRecruitmentPage && !canAccessRecruitment) || (isPresentationPage && !canAccessPresentations)) {
+      setPage(pages.home);
+      return;
+    }
+
     if (isPresentationPage) {
       refreshPresentation({ refreshReport: me.user.role === 'admin' }).catch((err) => setError(err.message));
     }
-  }, [token, me, isPresentationPage, presentationYear]);
+  }, [token, me, isBloodDrivePage, isRecruitmentPage, isPresentationPage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, presentationYear]);
 
   useEffect(() => {
-    if (!token || !me || !isBloodDrivePage) {
+    if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage)) {
+      return;
+    }
+
+    if ((isBloodDrivePage && !canAccessBloodDrive) || (isRecruitmentPage && !canAccessRecruitment)) {
       return;
     }
 
     const includeRepository = page === pages.repository;
     const includeEligible = page === pages.eligibleDonors;
-    const includeAllLocations = page === pages.donationLocations;
+    const includeRecruitment = isRecruitmentPage;
     const requests = [];
 
     if (page === pages.bloodDrive) {
@@ -310,10 +378,16 @@ export default function App() {
       requests.push(api(buildDonorQuery(repositoryFilters, false), { token }).then(setAllDonors));
     }
 
-    requests.push(refreshDonationLocations({ includeAll: includeAllLocations }));
+    if (page === pages.donationLocations) {
+      requests.push(refreshDonationLocations({ includeAll: true }));
+    }
+
+    if (includeRecruitment && canAccessRecruitment) {
+      requests.push(refreshRecruitmentLeads());
+    }
 
     Promise.all(requests).catch((err) => setError(err.message));
-  }, [token, me, isBloodDrivePage, page]);
+  }, [token, me, isBloodDrivePage, isRecruitmentPage, page, canAccessBloodDrive, canAccessRecruitment]);
 
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -358,7 +432,7 @@ export default function App() {
       await api('/api/birthdays', { token, method: 'POST', body: newBirthday });
       setNewBirthday(createEmptyBirthday());
       await refreshBirthdays();
-      showNotice('Birthday entry saved');
+      showNotice('Birthday record created successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -377,7 +451,7 @@ export default function App() {
       setBirthdayOverlayOpen(false);
       setBirthdays([savedBirthday]);
       setMemberBirthdayDraft(savedBirthday.birthdate);
-      showNotice('Birthday entry saved');
+      showNotice('Your birthday was saved successfully.');
     } catch (err) {
       setMemberBirthdayError(err.message);
     } finally {
@@ -388,14 +462,14 @@ export default function App() {
   const updateBirthday = async (id, payload) => {
     await api(`/api/birthdays/${id}`, { token, method: 'PUT', body: payload });
     await refreshBirthdays();
-    showNotice('Birthday entry updated');
+    showNotice('Birthday record updated successfully.');
   };
 
   const deleteBirthday = async (id) => {
     if (!window.confirm('Delete this birthday entry?')) return;
     await api(`/api/birthdays/${id}`, { token, method: 'DELETE' });
     await refreshBirthdays();
-    showNotice('Birthday entry deleted');
+    showNotice('Birthday record deleted successfully.');
   };
 
   const createUser = async (event) => {
@@ -405,7 +479,7 @@ export default function App() {
       await api('/api/users', { token, method: 'POST', body: newUser });
       setNewUser(createEmptyUser());
       await Promise.all([refreshUsers(), refreshPresentation({ refreshReport: true })]);
-      showNotice('User created');
+      showNotice('User account created successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -414,7 +488,7 @@ export default function App() {
   const updateUser = async (id, payload) => {
     await api(`/api/users/${id}`, { token, method: 'PUT', body: payload });
     await Promise.all([refreshUsers(), refreshPresentation({ refreshReport: true })]);
-    showNotice('User updated');
+    showNotice('User account updated successfully.');
   };
 
   const saveSettings = async (event) => {
@@ -423,7 +497,7 @@ export default function App() {
     try {
       const payload = await api('/api/settings', { token, method: 'PUT', body: { defaultChatId: settings.defaultChatId } });
       setSettings((current) => ({ ...current, defaultChatId: payload.defaultChatId || '', timezone: payload.timezone || current.timezone, hasBotToken: Boolean(payload.hasBotToken) }));
-      showNotice('Telegram settings saved');
+      showNotice('Telegram settings updated successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -433,8 +507,7 @@ export default function App() {
     setError('');
     try {
       const result = await api('/api/birthdays/run-now', { token, method: 'POST' });
-      const names = result.matched.length ? result.matched.map((item) => item.name).join(', ') : 'none';
-      showNotice(`Check complete. Birthdays today: ${names}`);
+      showNotice(formatBirthdayRunMessage(result.matched));
     } catch (err) {
       setError(err.message);
     }
@@ -459,7 +532,7 @@ export default function App() {
       setSelectedCollectionDonor(null);
       setBloodDriveOverlayOpen(false);
       await refreshBloodDrive({ includeRepository: true });
-      showNotice('Blood donor record saved');
+      showNotice('Blood donor record saved successfully.');
     } catch (err) {
       setBloodDriveError(err.message);
     } finally {
@@ -470,13 +543,13 @@ export default function App() {
   const updateDonor = async (id, payload) => {
     await api(`/api/blood-drive/donors/${id}`, { token, method: 'PUT', body: payload });
     await refreshBloodDrive({ includeRepository: true });
-    showNotice('Blood donor record updated');
+    showNotice('Blood donor record updated successfully.');
   };
 
   const updateEligibleDonorCall = async (id, payload) => {
     const updated = await api(`/api/blood-drive/donors/${id}/contact`, { token, method: 'PUT', body: payload });
     await refreshBloodDrive({ includeRepository: true });
-    showNotice('Call center status updated');
+    showNotice('Call center record updated successfully.');
     return updated;
   };
 
@@ -489,7 +562,7 @@ export default function App() {
         token,
         filename: `blood-donations-${date || 'today'}.xls`
       });
-      showNotice('Donation export downloaded');
+      showNotice('Donation export downloaded successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -509,7 +582,7 @@ export default function App() {
       setRepositoryDonorDraft(emptyRepositoryDonor);
       setRepositoryDonorError('');
       await refreshBloodDrive({ includeRepository: true });
-      showNotice('Potential donor added');
+      showNotice('Interested donor added to the repository.');
       return true;
     } catch (err) {
       setRepositoryDonorError(err.message);
@@ -524,7 +597,7 @@ export default function App() {
       await api('/api/blood-drive/locations', { token, method: 'POST', body: donationLocationDraft });
       setDonationLocationDraft(emptyDonationLocation);
       setDonationLocations(await api('/api/blood-drive/locations?activeOnly=false', { token }));
-      showNotice('Donation location added');
+      showNotice('Donation location created successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -539,7 +612,7 @@ export default function App() {
         body: { active: !location.active }
       });
       setDonationLocations(await api('/api/blood-drive/locations?activeOnly=false', { token }));
-      showNotice(`Location ${location.active ? 'disabled' : 'activated'}`);
+      showNotice(`Donation location ${location.active ? 'disabled' : 'activated'} successfully.`);
     } catch (err) {
       setError(err.message);
     }
@@ -549,17 +622,65 @@ export default function App() {
     if (!window.confirm('Delete this blood donor record?')) return;
     await api(`/api/blood-drive/donors/${id}`, { token, method: 'DELETE' });
     await refreshBloodDrive({ includeRepository: true });
-    showNotice('Blood donor record deleted');
+    showNotice('Blood donor record deleted successfully.');
   };
 
   const searchEligibleDonors = async () => setEligibleDonors(await api(buildDonorQuery(donorFilters, true), { token }));
   const searchRepositoryDonors = async () => setAllDonors(await api(buildDonorQuery(repositoryFilters, false), { token }));
-  const refreshCollectionLookup = async (value, { updateQuery = false } = {}) => {
-    const nextValue = String(value || '');
-    if (updateQuery) {
-      setCollectionLookupQuery(nextValue);
-    }
+  const searchRecruitmentLeads = async () => refreshRecruitmentLeads();
 
+  const saveRecruitmentLeadContact = async (id, payload) => {
+    const updated = await api(`/api/recruitment-interest/${id}/contact`, { token, method: 'PUT', body: payload });
+    await refreshRecruitmentLeads();
+    showNotice('Recruitment call record updated successfully.');
+    return updated;
+  };
+
+  const createRecruitmentLead = async (event) => {
+    event.preventDefault();
+    setRecruitmentLeadCreateSaving(true);
+    setRecruitmentLeadCreateError('');
+
+    try {
+      await api('/api/recruitment-interest', {
+        token,
+        method: 'POST',
+        body: recruitmentLeadDraft
+      });
+      setRecruitmentLeadDraft(emptyRecruitmentInterestForm);
+      await refreshRecruitmentLeads();
+      showNotice('Interested person added successfully.');
+      return true;
+    } catch (err) {
+      setRecruitmentLeadCreateError(err.message);
+      return false;
+    } finally {
+      setRecruitmentLeadCreateSaving(false);
+    }
+  };
+
+  const submitRecruitmentInterest = async (event) => {
+    event.preventDefault();
+    setRecruitmentLeadSaving(true);
+    setRecruitmentLeadError('');
+    setRecruitmentLeadSuccess('');
+
+    try {
+      await api('/api/recruitment-interest', {
+        method: 'POST',
+        body: recruitmentLeadForm
+      });
+      setRecruitmentLeadForm(emptyRecruitmentInterestForm);
+      setRecruitmentLeadSuccess('Your interest form has been submitted successfully. A member of the recruitment team will contact you when the campaign begins.');
+    } catch (err) {
+      setRecruitmentLeadError(err.message);
+    } finally {
+      setRecruitmentLeadSaving(false);
+    }
+  };
+
+  const refreshCollectionLookup = async (value) => {
+    const nextValue = String(value || '');
     if (nextValue.trim().length < 2) {
       setCollectionLookupResults([]);
       return;
@@ -572,7 +693,9 @@ export default function App() {
     setCollectionLookupResults(results);
   };
 
-  const searchCollectionDonors = async (value) => refreshCollectionLookup(value, { updateQuery: true });
+  const searchCollectionDonors = (value) => {
+    setCollectionLookupQuery(String(value || ''));
+  };
 
   const selectCollectionDonor = (donor) => {
     setSelectedCollectionDonor(donor);
@@ -596,7 +719,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!token || !me || !isBloodDrivePage) {
+    if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage)) {
+      return undefined;
+    }
+
+    if ((isBloodDrivePage && !canAccessBloodDrive) || (isRecruitmentPage && !canAccessRecruitment)) {
       return undefined;
     }
 
@@ -607,22 +734,14 @@ export default function App() {
 
       try {
         if (page === pages.bloodDrive) {
-          const [statsPayload, locationPayload] = await Promise.all([
-            api('/api/blood-drive/stats', { token }),
-            api('/api/blood-drive/locations', { token })
-          ]);
+          const statsPayload = await api('/api/blood-drive/stats', { token });
           setDonorStats(statsPayload);
-          setDonationLocations(locationPayload);
           return;
         }
 
         if (page === pages.eligibleDonors) {
-          const [eligiblePayload, locationPayload] = await Promise.all([
-            api(buildDonorQuery(donorFilters, true), { token }),
-            api('/api/blood-drive/locations', { token })
-          ]);
+          const eligiblePayload = await api(buildDonorQuery(donorFilters, true), { token });
           setEligibleDonors(eligiblePayload);
-          setDonationLocations(locationPayload);
           return;
         }
 
@@ -637,17 +756,18 @@ export default function App() {
             return;
           }
 
-          const [repositoryPayload, locationPayload] = await Promise.all([
-            api(buildDonorQuery(repositoryFilters, false), { token }),
-            api('/api/blood-drive/locations', { token })
-          ]);
+          const repositoryPayload = await api(buildDonorQuery(repositoryFilters, false), { token });
           setAllDonors(repositoryPayload);
-          setDonationLocations(locationPayload);
           return;
         }
 
         if (page === pages.donationLocations) {
           setDonationLocations(await api('/api/blood-drive/locations?activeOnly=false', { token }));
+          return;
+        }
+
+        if (isRecruitmentPage && canAccessRecruitment) {
+          await refreshRecruitmentLeads();
         }
       } catch (err) {
         setError(err.message);
@@ -655,22 +775,24 @@ export default function App() {
     }, bloodDriveRefreshMs);
 
     return () => window.clearInterval(intervalId);
-  }, [token, me, isBloodDrivePage, page, donorFilters, repositoryFilters]);
+  }, [token, me, isBloodDrivePage, isRecruitmentPage, page, donorFilters, repositoryFilters, recruitmentFilters, canAccessBloodDrive, canAccessRecruitment]);
 
   useEffect(() => {
-    if (!token || !bloodDriveOverlayOpen || selectedCollectionDonor || collectionLookupQuery.trim().length < 2) {
+    if (!token || !bloodDriveOverlayOpen || selectedCollectionDonor) {
       return undefined;
     }
 
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') {
-        return;
-      }
+    const trimmedQuery = collectionLookupQuery.trim();
+    if (trimmedQuery.length < 2) {
+      setCollectionLookupResults([]);
+      return undefined;
+    }
 
-      refreshCollectionLookup(collectionLookupQuery).catch((err) => setBloodDriveError(err.message));
-    }, bloodDriveRefreshMs);
+    const timeoutId = window.setTimeout(() => {
+      refreshCollectionLookup(trimmedQuery).catch((err) => setBloodDriveError(err.message));
+    }, 300);
 
-    return () => window.clearInterval(intervalId);
+    return () => window.clearTimeout(timeoutId);
   }, [token, bloodDriveOverlayOpen, selectedCollectionDonor, collectionLookupQuery]);
 
   const spinPresentationTopic = async () => {
@@ -678,7 +800,7 @@ export default function App() {
     try {
       await api('/api/presentations/spin', { token, method: 'POST', body: {} });
       await refreshPresentation();
-      showNotice('Presentation topic assigned');
+      showNotice('Presentation topic assigned successfully.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -711,7 +833,7 @@ export default function App() {
         };
       });
       setPage(pages.home);
-      showNotice('Presentation slot reserved');
+      showNotice('Presentation slot reserved successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -723,7 +845,7 @@ export default function App() {
       await api('/api/presentations/topics', { token, method: 'POST', body: presentationTopicDraft });
       setPresentationTopicDraft(emptyPresentationTopic);
       await refreshPresentation({ refreshReport: true });
-      showNotice('Presentation subject added');
+      showNotice('Presentation topic added successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -734,7 +856,7 @@ export default function App() {
     try {
       await api(`/api/presentations/topics/${id}`, { token, method: 'DELETE' });
       await refreshPresentation({ refreshReport: true });
-      showNotice('Presentation subject deleted');
+      showNotice('Presentation topic deleted successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -746,7 +868,7 @@ export default function App() {
       await api('/api/presentations/slots', { token, method: 'POST', body: presentationSlotDraft });
       setPresentationSlotDraft(emptyPresentationSlot);
       await refreshPresentation({ refreshReport: true });
-      showNotice('Presentation slots generated');
+      showNotice('Presentation slots created successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -757,7 +879,7 @@ export default function App() {
     try {
       await api(`/api/presentations/slots/${id}`, { token, method: 'DELETE' });
       await refreshPresentation({ refreshReport: true });
-      showNotice('Presentation spot deleted');
+      showNotice('Presentation slot deleted successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -772,7 +894,7 @@ export default function App() {
         order: getNextCriterionOrder([...(presentationData.admin?.criteria || []), { order: presentationCriterionDraft.order }])
       });
       await refreshPresentation({ refreshReport: true });
-      showNotice('Presentation criterion added');
+      showNotice('Presentation criterion added successfully.');
     } catch (err) {
       if (err.message.includes('order already exists')) {
         const nextOrder = getNextCriterionOrder(presentationData.admin?.criteria || []);
@@ -786,7 +908,7 @@ export default function App() {
     try {
       await api(`/api/presentations/criteria/${id}`, { token, method: 'PUT', body: payload });
       await refreshPresentation({ refreshReport: true });
-      showNotice('Presentation criterion updated');
+      showNotice('Presentation criterion updated successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -796,7 +918,7 @@ export default function App() {
     try {
       await api(`/api/presentations/presenters/${presenterId}/allow-second-attempt`, { token, method: 'PATCH', body: { allowSecondAttempt } });
       await refreshPresentation({ refreshReport: true });
-      showNotice(`Attempt 2 ${allowSecondAttempt ? 'enabled' : 'disabled'}`);
+      showNotice(`Second attempt ${allowSecondAttempt ? 'enabled' : 'disabled'} successfully.`);
     } catch (err) {
       setError(err.message);
     }
@@ -807,7 +929,7 @@ export default function App() {
     try {
       await api(`/api/presentations/criteria/${id}`, { token, method: 'DELETE' });
       await refreshPresentation({ refreshReport: true });
-      showNotice('Presentation criterion deleted');
+      showNotice('Presentation criterion deleted successfully.');
     } catch (err) {
       setError(err.message);
     }
@@ -864,7 +986,7 @@ export default function App() {
     try {
       await api(`/api/presentations/evaluations/${presenterId}`, { token, method: 'PUT', body: { attempt, scores, comment: presentationScoreDraft.comment } });
       await refreshPresentation({ refreshReport: true });
-      showNotice(`Attempt ${attempt} score saved`);
+      showNotice(`Attempt ${attempt} evaluation saved successfully.`);
     } catch (err) {
       await refreshPresentation({ refreshReport: true }).catch(() => {});
       setError(err.message);
@@ -875,11 +997,28 @@ export default function App() {
     try {
       const payload = await api(buildPresentationQuery('/api/presentations/report'), { token });
       setPresentationReport(payload);
-      showNotice('Presentation report refreshed');
+      showNotice('Presentation report refreshed successfully.');
     } catch (err) {
       setError(err.message);
     }
   };
+
+  if (page === pages.recruitmentInterestPublic) {
+    return (
+      <RecruitmentInterestPage
+        form={recruitmentLeadForm}
+        onChange={(field, value) => {
+          setRecruitmentLeadError('');
+          setRecruitmentLeadSuccess('');
+          setRecruitmentLeadForm((current) => ({ ...current, [field]: value }));
+        }}
+        onSubmit={submitRecruitmentInterest}
+        saving={recruitmentLeadSaving}
+        error={recruitmentLeadError}
+        success={recruitmentLeadSuccess}
+      />
+    );
+  }
 
   if (!token) return <LoginPage onLogin={handleLogin} />;
   if (loading) return <AppLoader title="Preparing your dashboard" subtitle="Loading access, workspace records, and your operational dashboard." />;
@@ -889,7 +1028,7 @@ export default function App() {
   const memberBirthday = birthdays[0] || null;
 
   const renderPage = () => {
-    if (isBloodDrivePage) {
+    if (isBloodDrivePage && canAccessBloodDrive) {
       return (
         <BloodDriveRouter
           page={page}
@@ -935,7 +1074,31 @@ export default function App() {
       );
     }
 
-    if (page === pages.presentations) {
+    if (isRecruitmentPage && canAccessRecruitment) {
+      return (
+        <RecruitmentRouter
+          page={page}
+          recruitmentLeads={recruitmentLeads}
+          recruitmentFilters={recruitmentFilters}
+          setRecruitmentFilters={setRecruitmentFilters}
+          recruitmentLeadDraft={recruitmentLeadDraft}
+          setRecruitmentLeadDraft={setRecruitmentLeadDraft}
+          recruitmentLeadCreateError={recruitmentLeadCreateError}
+          recruitmentLeadCreateSaving={recruitmentLeadCreateSaving}
+          publicFormUrl={publicRecruitmentFormUrl}
+          canManageRecruitment={canAccessRecruitment}
+          onOpenRepository={() => setPage(pages.recruitmentRepository)}
+          onOpenCallCenter={() => setPage(pages.recruitmentCallCenter)}
+          onSearchRecruitment={searchRecruitmentLeads}
+          onCreateRecruitmentLead={createRecruitmentLead}
+          onSaveRecruitmentLead={saveRecruitmentLeadContact}
+          onBackToHub={() => setPage(pages.home)}
+          onBackToRecruitment={() => setPage(pages.recruitment)}
+        />
+      );
+    }
+
+    if (page === pages.presentations && canAccessPresentations) {
       return (
         <PresentationRouter
           role={me.user.role}
@@ -993,6 +1156,7 @@ export default function App() {
         onSaveSettings={saveSettings}
         onOpenBirthdayOverlay={() => setBirthdayOverlayOpen(true)}
         onOpenBloodDrive={() => setPage(pages.bloodDrive)}
+        onOpenRecruitment={() => setPage(pages.recruitment)}
         onOpenPresentations={() => setPage(pages.presentations)}
       />
     );
@@ -1000,6 +1164,10 @@ export default function App() {
 
   return (
     <div className="dashboard-shell">
+      <div className="app-toast-stack" aria-live="polite" aria-atomic="true">
+        {notice ? <div className="notice-banner">{notice}</div> : null}
+        {error ? <div className="error-banner">{error}</div> : null}
+      </div>
       <div className="dashboard-container">
         <header className="dashboard-hero">
           <div>
@@ -1014,8 +1182,6 @@ export default function App() {
           </div>
         </header>
 
-        {notice ? <div className="notice-banner">{notice}</div> : null}
-        {error ? <div className="error-banner">{error}</div> : null}
         <Suspense
           fallback={
             <AppLoader

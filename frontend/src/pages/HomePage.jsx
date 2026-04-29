@@ -7,6 +7,7 @@ import {
 import AdminBirthdayPanel from '../features/birthdays/AdminBirthdayPanel';
 import TelegramSettingsPanel from '../features/settings/TelegramSettingsPanel';
 import AdminUsersPanel from '../features/users/AdminUsersPanel';
+import { hasModuleAccess } from '../lib/state';
 
 function AdminSummary({ summary }) {
   return (
@@ -48,13 +49,17 @@ export default function HomePage(props) {
     onSaveSettings,
     onOpenBirthdayOverlay,
     onOpenBloodDrive,
+    onOpenRecruitment,
     onOpenPresentations
   } = props;
 
   const isAdmin = me.user.role === 'admin';
+  const canAccessBloodDrive = hasModuleAccess(me.user, 'bloodDrive');
+  const canAccessRecruitment = hasModuleAccess(me.user, 'recruitment');
+  const canAccessPresentations = hasModuleAccess(me.user, 'presentations');
   return (
     <>
-      <section className="module-grid">
+      <section className={`module-grid ${isAdmin ? '' : 'member-home-grid'}`.trim()}>
         {!isAdmin ? (
           <BirthdayModuleCard
             memberName={me.user.displayName || me.user.username}
@@ -62,17 +67,29 @@ export default function HomePage(props) {
             onClick={onOpenBirthdayOverlay}
           />
         ) : null}
-        <ModuleCard
-          title="Blood Drive"
-          description="Open donor collection, eligibility lists, and blood drive analytics."
-          icon={<BloodDriveIcon />}
-          onClick={onOpenBloodDrive}
-        />
-        <PresentationModuleCard
-          role={me.user.role}
-          recruitState={presentationData.recruit}
-          onOpen={onOpenPresentations}
-        />
+        {canAccessBloodDrive ? (
+          <ModuleCard
+            title="Blood Drive"
+            description="Open donor collection, eligibility lists, and blood drive analytics."
+            icon={<BloodDriveIcon />}
+            onClick={onOpenBloodDrive}
+          />
+        ) : null}
+        {canAccessRecruitment ? (
+          <ModuleCard
+            title="Recruitment"
+            description="Open recruitment insights, the interested people repository, and the recruitment call center."
+            icon={<div className="module-icon-text">☎</div>}
+            onClick={onOpenRecruitment}
+          />
+        ) : null}
+        {canAccessPresentations ? (
+          <PresentationModuleCard
+            role={me.user.role}
+            recruitState={presentationData.recruit}
+            onOpen={onOpenPresentations}
+          />
+        ) : null}
       </section>
 
       {isAdmin ? (

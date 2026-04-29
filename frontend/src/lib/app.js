@@ -54,6 +54,13 @@ export const emptyDonationLocation = {
   active: true
 };
 
+export const emptyRecruitmentInterestForm = {
+  firstName: '',
+  lastName: '',
+  phoneNumber: '',
+  dateOfBirth: ''
+};
+
 export const emptyPresentationTopic = {
   title: '',
   description: ''

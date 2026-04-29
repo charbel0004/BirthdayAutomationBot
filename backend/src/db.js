@@ -15,6 +15,7 @@ const REQUIRED_COLLECTIONS = [
   'birthdays',
   'blood_donors',
   'donation_locations',
+  'recruitment_interest_leads',
   'presentation_topics',
   'presentation_slots',
   'presentation_bookings',
@@ -44,6 +45,10 @@ function bloodDonorsCollection() {
 
 function donationLocationsCollection() {
   return getDb().collection('donation_locations');
+}
+
+function recruitmentInterestLeadsCollection() {
+  return getDb().collection('recruitment_interest_leads');
 }
 
 function presentationTopicsCollection() {
@@ -113,6 +118,9 @@ async function ensureIndexes() {
     bloodDonorsCollection().createIndex({ nextEligibleDonationDate: 1 }),
     donationLocationsCollection().createIndex({ normalizedName: 1 }, { unique: true }),
     donationLocationsCollection().createIndex({ active: 1, name: 1 }),
+    recruitmentInterestLeadsCollection().createIndex({ normalizedPhoneNumber: 1 }),
+    recruitmentInterestLeadsCollection().createIndex({ normalizedFullName: 1, dateOfBirth: 1 }),
+    recruitmentInterestLeadsCollection().createIndex({ callStatus: 1, createdAt: -1 }),
     presentationTopicsCollection().createIndex({ isAssigned: 1, createdAt: 1 }),
     presentationTopicsCollection().createIndex({ assignedTo: 1 }),
     presentationSlotsCollection().createIndex({ startAt: 1 }, { unique: true }),
@@ -236,6 +244,7 @@ module.exports = {
   getDb,
   normalizeName,
   now,
+  recruitmentInterestLeadsCollection,
   presentationBookingsCollection,
   presentationCriteriaCollection,
   presentationEvaluationsCollection,
