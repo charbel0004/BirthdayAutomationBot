@@ -8,6 +8,11 @@ import {
   months,
   monthMaxDays
 } from '../lib/app';
+import {
+  createDefaultModuleAccess,
+  moduleAccessKeys,
+  moduleAccessLabels
+} from '../lib/state';
 
 export function LoaderAvatar() {
   return (
@@ -672,12 +677,27 @@ export function BirthdayRow({ entry, onSave, onDelete }) {
 }
 
 export function UserRow({ user, onSave }) {
-  const [draft, setDraft] = useState({ username: user.username, displayName: user.displayName, role: user.role, active: user.active, password: '' });
+  const [draft, setDraft] = useState({
+    username: user.username,
+    displayName: user.displayName,
+    role: user.role,
+    moduleAccess: user.moduleAccess || createDefaultModuleAccess(user.role),
+    active: user.active,
+    password: ''
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    setDraft({ username: user.username, displayName: user.displayName, role: user.role, active: user.active, password: '' });
+    setDraft({
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role,
+      moduleAccess: user.moduleAccess || createDefaultModuleAccess(user.role),
+      active: user.active,
+      password: ''
+    });
   }, [user]);
 
   const save = async () => {
@@ -694,21 +714,95 @@ export function UserRow({ user, onSave }) {
   };
 
   return (
-    <tr>
-      <td><input value={draft.username} onChange={(event) => setDraft({ ...draft, username: event.target.value })} /></td>
-      <td><input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} /></td>
-      <td>
-        <select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })}>
-          <option value="admin">Admin</option>
-          <option value="member">Member</option>
-          <option value="new recruit">New Recruit</option>
-        </select>
-      </td>
-      <td><label className="inline-checkbox"><input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} />Active</label></td>
-      <td><input type="password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} placeholder="Leave blank" /></td>
-      <td className="actions"><button type="button" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button></td>
-      <td>{error ? <span className="small-error">{error}</span> : null}</td>
-    </tr>
+    <>
+      <tr className={expanded ? 'user-summary-row is-expanded' : 'user-summary-row'}>
+        <td>{user.username}</td>
+        <td>{user.displayName}</td>
+        <td>{user.role}</td>
+        <td>{user.active ? 'Active' : 'Inactive'}</td>
+        <td className="actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? 'Hide Access' : 'Manage Access'}
+          </button>
+        </td>
+      </tr>
+      {expanded ? (
+        <tr className="user-detail-row">
+          <td colSpan="5">
+            <div className="user-detail-card">
+              <div className="user-detail-grid">
+                <label>
+                  Username
+                  <input value={draft.username} onChange={(event) => setDraft({ ...draft, username: event.target.value })} />
+                </label>
+                <label>
+                  Display name
+                  <input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} />
+                </label>
+                <label>
+                  Role
+                  <select
+                    value={draft.role}
+                    onChange={(event) => setDraft({
+                      ...draft,
+                      role: event.target.value,
+                      moduleAccess: createDefaultModuleAccess(event.target.value)
+                    })}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="member">Member</option>
+                    <option value="new recruit">New Recruit</option>
+                  </select>
+                </label>
+                <label>
+                  Reset password
+                  <input type="password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} placeholder="Leave blank" />
+                </label>
+              </div>
+              <div className="user-access-block">
+                <div className="user-access-head">
+                  <strong>Section access</strong>
+                  <span>Choose which parts of the workspace this user can open.</span>
+                </div>
+                <div className="module-access-options">
+                  {moduleAccessKeys.map((key) => (
+                    <label key={key} className="inline-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={draft.role === 'admin' ? true : Boolean(draft.moduleAccess?.[key])}
+                        disabled={draft.role === 'admin'}
+                        onChange={(event) => setDraft((current) => ({
+                          ...current,
+                          moduleAccess: {
+                            ...current.moduleAccess,
+                            [key]: event.target.checked
+                          }
+                        }))}
+                      />
+                      {moduleAccessLabels[key]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="user-detail-footer">
+                <label className="inline-checkbox">
+                  <input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} />
+                  Active
+                </label>
+                <div className="user-detail-actions">
+                  {error ? <span className="small-error">{error}</span> : null}
+                  <button type="button" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save User'}</button>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
 

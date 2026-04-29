@@ -83,17 +83,14 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
         <button type="submit">Create User</button>
       </form>
       <div className="table-wrap">
-        <table>
+        <table className="users-table">
           <thead>
             <tr>
               <th>Username</th>
               <th>Display name</th>
               <th>Role</th>
-              <th>Section access</th>
               <th>Status</th>
-              <th>Reset password</th>
               <th>Actions</th>
-              <th />
             </tr>
           </thead>
           <tbody>
