@@ -480,8 +480,10 @@ export default function App() {
       setNewUser(createEmptyUser());
       await Promise.all([refreshUsers(), refreshPresentation({ refreshReport: true })]);
       showNotice('User account created successfully.');
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     }
   };
 

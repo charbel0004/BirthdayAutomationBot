@@ -706,6 +706,7 @@ export function UserRow({ user, onSave }) {
     try {
       await onSave(user.id, draft);
       setDraft((current) => ({ ...current, password: '' }));
+      setExpanded(false);
     } catch (err) {
       setError(err.message);
     } finally {

@@ -195,6 +195,18 @@ function normalizeModuleAccess(role = 'member', moduleAccess = {}) {
   }, {});
 }
 
+function createSignupModuleAccess(role = 'member') {
+  if (role === 'member') {
+    return {
+      bloodDrive: false,
+      recruitment: false,
+      presentations: true
+    };
+  }
+
+  return createDefaultModuleAccess(role);
+}
+
 function hasModuleAccess(account, moduleKey) {
   if (isAdminAccount(account)) {
     return true;
@@ -854,7 +866,7 @@ app.post('/api/auth/signup', async (req, res) => {
     passwordHash: await bcrypt.hash(String(password), 10),
     displayName: trimmedDisplayName,
     role,
-    moduleAccess: normalizeModuleAccess(role),
+    moduleAccess: normalizeModuleAccess(role, createSignupModuleAccess(role)),
     active: true,
     createdAt,
     updatedAt: createdAt
