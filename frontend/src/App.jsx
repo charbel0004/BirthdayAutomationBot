@@ -299,15 +299,12 @@ export default function App() {
   };
 
   const refreshBloodDrive = async ({ includeRepository = false, includeAllLocations = false } = {}) => {
-    const requests = [
+    const [statsPayload, eligiblePayload, locationsPayload, repositoryPayload] = await Promise.all([
       api('/api/blood-drive/stats', { token }),
-      api(buildDonorQuery(donorFilters, true), { token })
-    ];
-    if (includeAllLocations) {
-      requests.push(api('/api/blood-drive/locations?activeOnly=false', { token }));
-    }
-    if (includeRepository) requests.push(api(buildDonorQuery(repositoryFilters, false), { token }));
-    const [statsPayload, eligiblePayload, locationsPayload, repositoryPayload] = await Promise.all(requests);
+      api(buildDonorQuery(donorFilters, true), { token }),
+      includeAllLocations ? api('/api/blood-drive/locations?activeOnly=false', { token }) : Promise.resolve(null),
+      includeRepository ? api(buildDonorQuery(repositoryFilters, false), { token }) : Promise.resolve(null)
+    ]);
     setDonorStats(statsPayload);
     setEligibleDonors(eligiblePayload);
     if (includeAllLocations && locationsPayload) {
