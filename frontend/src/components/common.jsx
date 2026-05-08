@@ -924,7 +924,7 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
       upcomingDonationDate: donor.upcomingDonationDate || '',
       notes: donor.notes || ''
     });
-  }, [donor]);
+  }, [donor.id]);
 
   if (!isOpen) return null;
 

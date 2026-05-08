@@ -28,7 +28,7 @@ export function BloodDrivePage({ donorStats, onOpenCollection, onOpenEligibleDon
           <article className="stat-card"><span>Upcoming donors</span><strong>{donorStats.totals.upcoming}</strong></article>
         </div>
         <div className="chart-grid">
-          <MetricBarChart title="Donors by location" items={donorStats.byLocation.length ? donorStats.byLocation : [{ label: 'No data', value: 0 }]} />
+          <MetricBarChart title="Donations by location" items={donorStats.byLocation.length ? donorStats.byLocation : [{ label: 'No data', value: 0 }]} />
           <MetricBarChart title="Donors by age group" items={donorStats.byAgeGroup.length ? donorStats.byAgeGroup : [{ label: 'No data', value: 0 }]} />
         </div>
         {isAdmin ? (
@@ -302,18 +302,31 @@ export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDono
           <div className="call-center-list">
             {eligibleDonors.length ? (
               eligibleDonors.map((donor) => (
-                <button
-                  key={donor.id}
-                  type="button"
-                  className={`call-center-donor-button${donor.id === selectedDonorId && panelOpen ? ' is-active' : ''}`}
-                  onClick={() => {
-                    setSelectedDonorId(donor.id);
-                    setPanelOpen(true);
-                  }}
-                >
-                  <strong>{donor.fullName}</strong>
-                  <span>{donor.phoneNumber || 'No phone number'}</span>
-                </button>
+                <div key={donor.id} className="call-center-list-item">
+                  <button
+                    type="button"
+                    className={`call-center-donor-button${donor.id === selectedDonorId && panelOpen ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setSelectedDonorId(donor.id);
+                      setPanelOpen(true);
+                    }}
+                  >
+                    <strong>{donor.fullName}</strong>
+                    <span>{donor.phoneNumber || 'No phone number'}</span>
+                  </button>
+                  {donor.id === selectedDonorId && panelOpen ? (
+                    <div className="call-center-inline-detail">
+                      <CallCenterRecordPanel
+                        donor={donor}
+                        onSave={onSaveDonor}
+                        onMarkDonated={onMarkDonated}
+                        editable={isAdmin}
+                        isOpen={panelOpen}
+                        onClose={() => setPanelOpen(false)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               ))
             ) : (
               <div className="helper-text">No eligible donors found.</div>

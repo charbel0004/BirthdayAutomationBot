@@ -123,7 +123,10 @@ export async function api(path, { token, method = 'GET', body } = {}) {
       window.location.reload();
     }
 
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
   }
 
   if (response.status === 204) {
@@ -146,7 +149,10 @@ export async function downloadFile(path, { token, filename = 'download' } = {}) 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     const message = payload.error || `Request failed with status ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
   }
 
   const blob = await response.blob();

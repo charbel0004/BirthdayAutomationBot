@@ -516,6 +516,7 @@ export default function App() {
     event.preventDefault();
     setBloodDriveSaving(true);
     setBloodDriveError('');
+    const currentFormSnapshot = { ...bloodDriveForm };
     try {
       await api('/api/blood-drive/donors', {
         token,
@@ -533,6 +534,29 @@ export default function App() {
       await refreshBloodDrive({ includeRepository: true });
       showNotice('Blood donor record saved successfully.');
     } catch (err) {
+      if (err.status === 409 && err.payload?.duplicateDonor && !selectedCollectionDonor) {
+        const duplicateDonor = err.payload.duplicateDonor;
+        selectCollectionDonor(duplicateDonor, {
+          location: currentFormSnapshot.location,
+          notes: currentFormSnapshot.notes
+        });
+        await api('/api/blood-drive/donors', {
+          token,
+          method: 'POST',
+          body: {
+            ...currentFormSnapshot,
+            donorId: duplicateDonor.id
+          }
+        });
+        setBloodDriveForm(emptyBloodDriveForm);
+        setCollectionLookupQuery('');
+        setCollectionLookupResults([]);
+        setSelectedCollectionDonor(null);
+        setBloodDriveOverlayOpen(false);
+        await refreshBloodDrive({ includeRepository: true });
+        showNotice('Existing blood donor record matched and updated successfully.');
+        return;
+      }
       setBloodDriveError(err.message);
     } finally {
       setBloodDriveSaving(false);
@@ -559,7 +583,7 @@ export default function App() {
       if (date) params.set('date', date);
       await downloadFile(`/api/blood-drive/donors/export?${params.toString()}`, {
         token,
-        filename: `blood-donations-${date || 'today'}.xls`
+        filename: `blood-donations-${date || 'today'}.xlsx`
       });
       showNotice('Donation export downloaded successfully.');
     } catch (err) {
@@ -696,15 +720,15 @@ export default function App() {
     setCollectionLookupQuery(String(value || ''));
   };
 
-  const selectCollectionDonor = (donor) => {
+  const selectCollectionDonor = (donor, overrides = {}) => {
     setSelectedCollectionDonor(donor);
     setBloodDriveForm({
       firstName: donor.firstName,
       lastName: donor.lastName,
       dateOfBirth: donor.dateOfBirth,
       phoneNumber: donor.phoneNumber,
-      location: donor.location || '',
-      notes: donor.notes || ''
+      location: overrides.location ?? donor.location ?? '',
+      notes: overrides.notes ?? donor.notes ?? ''
     });
     setCollectionLookupQuery(donor.fullName);
     setCollectionLookupResults([]);

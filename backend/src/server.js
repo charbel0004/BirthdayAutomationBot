@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const XLSX = require('xlsx');
 
 const { authMiddleware, requireRole, signAuthToken } = require('./auth');
 const {
@@ -1256,8 +1257,14 @@ app.get('/api/blood-drive/stats', requireBloodDriveAccess, async (req, res) => {
     bloodDonorsCollection().countDocuments({ nextEligibleDonationDate: { $gt: today } }),
     bloodDonorsCollection().aggregate([
       {
+        $match: {
+          lastDonationDate: { $ne: '' },
+          location: { $exists: true, $ne: '' }
+        }
+      },
+      {
         $group: {
-          _id: { $ifNull: ['$location', 'Unspecified'] },
+          _id: '$location',
           value: { $sum: 1 }
         }
       },
@@ -1389,8 +1396,22 @@ app.get('/api/blood-drive/donors/export', requireRole('admin'), requireBloodDriv
     updatedByName: donor.updatedByName || '',
     notes: donor.notes || ''
   }));
+  const worksheet = XLSX.utils.json_to_sheet(rows, {
+    header: [
+      'fullName',
+      'firstName',
+      'lastName',
+      'age',
+      'dateOfBirth',
+      'phoneNumber',
+      'location',
+      'donationDate',
+      'updatedByName',
+      'notes'
+    ]
+  });
 
-  const headerCells = [
+  XLSX.utils.sheet_add_aoa(worksheet, [[
     'Full Name',
     'First Name',
     'Last Name',
@@ -1401,38 +1422,15 @@ app.get('/api/blood-drive/donors/export', requireRole('admin'), requireBloodDriv
     'Donation Date',
     'Updated By',
     'Notes'
-  ].map((label) => `<Cell><Data ss:Type="String">${escapeXml(label)}</Data></Cell>`).join('');
+  ]], { origin: 'A1' });
 
-  const bodyRows = rows.map((row) => `
-    <Row>
-      <Cell><Data ss:Type="String">${escapeXml(row.fullName)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.firstName)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.lastName)}</Data></Cell>
-      <Cell><Data ss:Type="${row.age === '' ? 'String' : 'Number'}">${escapeXml(row.age)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.dateOfBirth)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.phoneNumber)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.location)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.donationDate)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.updatedByName)}</Data></Cell>
-      <Cell><Data ss:Type="String">${escapeXml(row.notes)}</Data></Cell>
-    </Row>`).join('');
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Donations');
+  const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
-  const workbook = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-  <Worksheet ss:Name="Donations">
-    <Table>
-      <Row>${headerCells}</Row>${bodyRows}
-    </Table>
-  </Worksheet>
-</Workbook>`;
-
-  res.setHeader('Content-Type', 'application/vnd.ms-excel');
-  res.setHeader('Content-Disposition', `attachment; filename="blood-donations-${requestedDate}.xls"`);
-  res.send(workbook);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="blood-donations-${requestedDate}.xlsx"`);
+  res.send(workbookBuffer);
 });
 
 app.get('/api/recruitment-interest', requireRecruitmentAccess, async (req, res) => {
@@ -1645,7 +1643,7 @@ app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) =>
     const updates = {
       ...basePayload,
       locationHistory: buildLocationHistory(donor.locationHistory, String(location).trim()),
-      userId: donor.userId || req.account._id,
+      userId: donor.userId || null,
       contacted: donor.contacted === true,
       willingToDonate: donor.willingToDonate === true,
       callStatus: donor.callStatus || '',
@@ -1665,65 +1663,22 @@ app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) =>
     );
   }
 
-  if (!isAdminAccount(req.account)) {
-    const existing = await bloodDonorsCollection().findOne({ userId: req.account._id });
-
-    if (existing) {
-      await bloodDonorsCollection().updateOne({
-        _id: existing._id
-      }, {
-        $set: {
-          ...basePayload,
-          locationHistory: buildLocationHistory(existing.locationHistory, String(location).trim()),
-          userId: req.account._id,
-          contacted: existing.contacted === true,
-          willingToDonate: existing.willingToDonate === true,
-          callStatus: existing.callStatus || '',
-          lastCallDate: existing.lastCallDate || '',
-          upcomingDonationDate: '',
-          callHistory: Array.isArray(existing.callHistory) ? existing.callHistory : [],
-          notes: typeof notes === 'string' ? notes.trim() : (existing.notes || '')
-        }
-      });
-      const updated = await bloodDonorsCollection().findOne({ _id: existing._id });
-      return res.json(
-        sanitizeBloodDonor({
-          ...updated,
-          isEligible: updated.nextEligibleDonationDate <= lastUpdatedDate
-        })
-      );
-    }
-  }
-
   const duplicate = await findExistingBloodDonor({ firstName, lastName, dateOfBirth, phoneNumber });
   if (duplicate) {
-    const updates = {
-      ...basePayload,
-      locationHistory: buildLocationHistory(duplicate.locationHistory, String(location).trim()),
-      userId: duplicate.userId || req.account._id,
-      contacted: duplicate.contacted === true,
-      willingToDonate: duplicate.willingToDonate === true,
-      callStatus: duplicate.callStatus || '',
-      lastCallDate: duplicate.lastCallDate || '',
-      upcomingDonationDate: '',
-      callHistory: Array.isArray(duplicate.callHistory) ? duplicate.callHistory : [],
-      notes: typeof notes === 'string' ? notes.trim() : (duplicate.notes || '')
-    };
-
-    await bloodDonorsCollection().updateOne({ _id: duplicate._id }, { $set: updates });
-    const updated = await bloodDonorsCollection().findOne({ _id: duplicate._id });
-    return res.json(
-      sanitizeBloodDonor({
-        ...updated,
-        isEligible: updated.nextEligibleDonationDate <= lastUpdatedDate
+    const today = formatDateOnly(now());
+    return res.status(409).json({
+      error: 'A matching donor record already exists. Review the selected donor details, then submit again to mark them as donated.',
+      duplicateDonor: sanitizeBloodDonor({
+        ...duplicate,
+        isEligible: duplicate.nextEligibleDonationDate <= today
       })
-    );
+    });
   }
 
   const payload = {
     ...basePayload,
     locationHistory: buildLocationHistory([], String(location).trim()),
-    userId: req.account._id
+    userId: null
   };
 
   const result = await bloodDonorsCollection().insertOne({
