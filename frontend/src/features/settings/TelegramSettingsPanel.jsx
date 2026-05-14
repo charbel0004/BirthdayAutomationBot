@@ -4,15 +4,23 @@ export default function TelegramSettingsPanel({ settings, setSettings, onSave })
       <div className="section-head">
         <div>
           <h2>Telegram Control</h2>
-          <p>Bot token and message template remain in the JSON configuration file. Chat ID can still be updated here.</p>
+          <p>Bot token and message template remain in the JSON configuration file. Set separate Telegram group chat IDs for members/admins and new recruits here.</p>
         </div>
       </div>
       <form onSubmit={onSave} className="grid-form">
         <label>
-          Destination chat ID
+          Members and admins group chat ID
           <input
-            value={settings.defaultChatId}
-            onChange={(event) => setSettings({ ...settings, defaultChatId: event.target.value })}
+            value={settings.membersGroupChatId}
+            onChange={(event) => setSettings({ ...settings, membersGroupChatId: event.target.value })}
+            placeholder="-1001234567890"
+          />
+        </label>
+        <label>
+          New recruits group chat ID
+          <input
+            value={settings.newRecruitsGroupChatId}
+            onChange={(event) => setSettings({ ...settings, newRecruitsGroupChatId: event.target.value })}
             placeholder="-1001234567890"
           />
         </label>

@@ -1,4 +1,4 @@
-const { birthdaysCollection } = require('./db');
+const { birthdaysCollection, usersCollection } = require('./db');
 const { readTelegramSettings, writeTelegramSettings } = require('./store');
 const { sendTelegramMessage } = require('./telegram');
 
@@ -54,16 +54,33 @@ async function runBirthdayCheck({ force = false } = {}) {
 
   const matched = await birthdaysCollection()
     .find(baseMatch)
-    .project({ name: 1 })
+    .project({ name: 1, userId: 1 })
     .toArray();
 
-  if (matched.length > 0 && telegram.botToken && telegram.defaultChatId) {
+  const birthdayOwners = matched.length
+    ? await usersCollection()
+        .find({ _id: { $in: matched.map((member) => member.userId).filter(Boolean) } })
+        .project({ role: 1 })
+        .toArray()
+    : [];
+  const ownersById = new Map(birthdayOwners.map((user) => [String(user._id), user]));
+
+  if (matched.length > 0 && telegram.botToken) {
     const template = telegram.birthdayMessageTemplate || 'Happy Birthday, {name}!';
 
     for (const member of matched) {
+      const owner = ownersById.get(String(member.userId || ''));
+      const targetChatId = owner?.role === 'new recruit'
+        ? telegram.newRecruitsGroupChatId
+        : telegram.membersGroupChatId;
+
+      if (!targetChatId) {
+        continue;
+      }
+
       await sendTelegramMessage({
         botToken: telegram.botToken,
-        chatId: telegram.defaultChatId,
+        chatId: targetChatId,
         text: buildBirthdayMessage(template, member)
       });
     }

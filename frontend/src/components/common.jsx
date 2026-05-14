@@ -56,6 +56,16 @@ export function PresentationIcon() {
   );
 }
 
+export function QueteIcon() {
+  return (
+    <svg viewBox="0 0 120 120" className="module-icon-svg" aria-hidden="true">
+      <circle cx="60" cy="60" r="46" fill="#fff7f1" />
+      <path d="M40 38h40a10 10 0 0 1 10 10v26a10 10 0 0 1-10 10H40a10 10 0 0 1-10-10V48a10 10 0 0 1 10-10Z" fill="#fffdfa" stroke="#bf3a2b" strokeWidth="4" />
+      <path d="M48 54h24M48 66h16M78 52v18M69 61h18" stroke="#bf3a2b" strokeWidth="6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function AppLoader({ title, subtitle }) {
   return (
     <div className="loading-screen">
@@ -420,6 +430,26 @@ export function PresentationModuleCard({ role, recruitState, onOpen }) {
   );
 }
 
+export function QueteModuleCard({ shifts, myReservations, onOpen }) {
+  const nextShift = shifts.find((shift) => shift.availableSeats > 0) || shifts[0] || null;
+  const nextOwnReservation = myReservations[0]?.shift || null;
+
+  return (
+    <ModuleCard
+      title="Quete"
+      description={
+        nextOwnReservation
+          ? `You are booked for ${formatDateTime(nextOwnReservation.startAt)}. Open Quete to manage your shifts.`
+          : nextShift
+            ? `${nextShift.availableSeats} seat${nextShift.availableSeats === 1 ? '' : 's'} left on the next available shift.`
+            : 'Open the Quete board to review shifts and reserve your place.'
+      }
+      icon={<QueteIcon />}
+      onClick={onOpen}
+    />
+  );
+}
+
 export function BirthdayOverlay({ isOpen, birthdate, onChange, onClose, onSubmit, saving, error }) {
   if (!isOpen) return null;
 
@@ -683,6 +713,7 @@ export function UserRow({ user, onSave }) {
     role: user.role,
     moduleAccess: user.moduleAccess || createDefaultModuleAccess(user.role),
     active: user.active,
+    isQueteFocal: user.isQueteFocal === true,
     password: ''
   });
   const [saving, setSaving] = useState(false);
@@ -696,6 +727,7 @@ export function UserRow({ user, onSave }) {
       role: user.role,
       moduleAccess: user.moduleAccess || createDefaultModuleAccess(user.role),
       active: user.active,
+      isQueteFocal: user.isQueteFocal === true,
       password: ''
     });
   }, [user]);
@@ -775,7 +807,7 @@ export function UserRow({ user, onSave }) {
                       <input
                         type="checkbox"
                         checked={draft.role === 'admin' ? true : Boolean(draft.moduleAccess?.[key])}
-                        disabled={draft.role === 'admin'}
+                        disabled={draft.role === 'admin' || key === 'quete'}
                         onChange={(event) => setDraft((current) => ({
                           ...current,
                           moduleAccess: {
@@ -784,16 +816,26 @@ export function UserRow({ user, onSave }) {
                           }
                         }))}
                       />
-                      {moduleAccessLabels[key]}
+                      {moduleAccessLabels[key]}{key === 'quete' ? ' (Required)' : ''}
                     </label>
                   ))}
                 </div>
               </div>
               <div className="user-detail-footer">
-                <label className="inline-checkbox">
-                  <input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} />
-                  Active
-                </label>
+                <div>
+                  <label className="inline-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={draft.isQueteFocal}
+                      onChange={(event) => setDraft({ ...draft, isQueteFocal: event.target.checked })}
+                    />
+                    Quete focal
+                  </label>
+                  <label className="inline-checkbox">
+                    <input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} />
+                    Active
+                  </label>
+                </div>
                 <div className="user-detail-actions">
                   {error ? <span className="small-error">{error}</span> : null}
                   <button type="button" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save User'}</button>

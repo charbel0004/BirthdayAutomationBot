@@ -498,6 +498,10 @@ label {
   margin-bottom: 16px;
 }
 
+.admin-home-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .member-home-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -992,6 +996,90 @@ label {
   font-size: 0.96rem;
   text-align: right;
   word-break: break-word;
+}
+
+.quete-page .panel {
+  overflow: hidden;
+}
+
+.quete-shift-list,
+.quete-reservation-list,
+.quete-focal-list {
+  display: grid;
+  gap: 12px;
+}
+
+.quete-tool-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.admin-tool-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.quete-tool-card {
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.admin-tool-card {
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.quete-tool-card.is-active {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px rgba(177, 32, 40, 0.08);
+  background: linear-gradient(180deg, #fff6f2 0%, #f5e7de 100%);
+}
+
+.admin-tool-card.is-active {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px rgba(177, 32, 40, 0.08);
+  background: linear-gradient(180deg, #fff6f2 0%, #f5e7de 100%);
+}
+
+.quete-tool-card span {
+  color: var(--muted);
+}
+
+.admin-tool-card span {
+  color: var(--muted);
+}
+
+.quete-shift-card .actions {
+  flex-wrap: wrap;
+}
+
+.quete-table-wrap table {
+  min-width: 0;
+}
+
+.quete-table-wrap th,
+.quete-table-wrap td {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.quete-create-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quete-create-form label:last-of-type,
+.quete-create-form button,
+.quete-focal-form,
+.quete-assign-form {
+  grid-column: 1 / -1;
+}
+
+.quete-focal-form,
+.quete-assign-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
 }
 
 .repository-table-wrap th,
@@ -2060,6 +2148,7 @@ th {
   }
 
   .member-home-grid,
+  .admin-home-grid,
   .blood-drive-module-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2113,6 +2202,7 @@ th {
   }
 
   .member-home-grid,
+  .admin-home-grid,
   .blood-drive-module-grid,
   .module-grid,
   .repository-summary-grid,
@@ -2302,6 +2392,35 @@ th {
 
   .repository-card-row strong {
     text-align: left;
+  }
+
+  .quete-create-form,
+  .quete-focal-form,
+  .quete-assign-form {
+    grid-template-columns: 1fr;
+  }
+
+  .quete-table-wrap {
+    display: block;
+    border-radius: 16px;
+  }
+
+  .quete-table-wrap table {
+    min-width: 560px;
+  }
+
+  .quete-shift-card .repository-card-grid {
+    gap: 10px;
+  }
+
+  .quete-shift-card .repository-card-row {
+    grid-template-columns: 1fr;
+  }
+
+  .quete-shift-card .actions button,
+  .quete-focal-form button,
+  .quete-assign-form button {
+    width: 100%;
   }
 
   .presentation-report-summary {

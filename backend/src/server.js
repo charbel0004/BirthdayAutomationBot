@@ -12,6 +12,8 @@ const {
   donationLocationsCollection,
   normalizeName,
   now,
+  queteReservationsCollection,
+  queteShiftsCollection,
   presentationBookingsCollection,
   presentationCriteriaCollection,
   presentationEvaluationsCollection,
@@ -55,7 +57,14 @@ app.use(cors({
 app.use(express.json());
 
 const USER_ROLES = ['admin', 'member', 'new recruit'];
-const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations'];
+const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations', 'quete'];
+const QUETE_SHIFT_TYPES = new Set(['morning', 'afternoon']);
+const QUETE_SHIFT_CATEGORIES = {
+  road: 1,
+  restaurant: 0.5,
+  church: 1,
+  churchMass: 0.5
+};
 
 function isValidBirthdate(value) {
   return /^\d{2}-\d{2}$/.test(value);
@@ -65,8 +74,44 @@ function formatDateOnly(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
 
+function isValidDateKey(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+}
+
 function formatDateTime(value) {
   return new Date(value).toISOString();
+}
+
+function getDateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function combineDateAndTime(dateValue, timeValue) {
+  const trimmedDate = String(dateValue || '').trim();
+  const trimmedTime = String(timeValue || '').trim();
+
+  if (!trimmedDate) {
+    return new Date('');
+  }
+
+  if (!trimmedTime) {
+    return new Date(trimmedDate);
+  }
+
+  if (trimmedTime.includes('T')) {
+    return new Date(trimmedTime);
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(trimmedTime)) {
+    return new Date('');
+  }
+
+  return new Date(`${trimmedDate}T${trimmedTime}:00`);
 }
 
 function getPresentationYear(value) {
@@ -169,7 +214,8 @@ function createDefaultModuleAccess(role = 'member') {
     return {
       bloodDrive: true,
       recruitment: true,
-      presentations: true
+      presentations: true,
+      quete: true
     };
   }
 
@@ -177,23 +223,30 @@ function createDefaultModuleAccess(role = 'member') {
     return {
       bloodDrive: false,
       recruitment: false,
-      presentations: true
+      presentations: true,
+      quete: true
     };
   }
 
   return {
     bloodDrive: true,
     recruitment: true,
-    presentations: true
+    presentations: true,
+    quete: true
   };
 }
 
 function normalizeModuleAccess(role = 'member', moduleAccess = {}) {
   const defaults = createDefaultModuleAccess(role);
-  return MODULE_ACCESS_KEYS.reduce((accumulator, key) => {
+  const normalized = MODULE_ACCESS_KEYS.reduce((accumulator, key) => {
     accumulator[key] = typeof moduleAccess?.[key] === 'boolean' ? moduleAccess[key] : defaults[key];
     return accumulator;
   }, {});
+
+  // Quete is mandatory across the workspace, so it stays enabled for every account.
+  normalized.quete = true;
+
+  return normalized;
 }
 
 function createSignupModuleAccess(role = 'member') {
@@ -201,7 +254,8 @@ function createSignupModuleAccess(role = 'member') {
     return {
       bloodDrive: false,
       recruitment: false,
-      presentations: true
+      presentations: true,
+      quete: true
     };
   }
 
@@ -233,7 +287,8 @@ function sanitizeUser(user) {
     displayName: user.displayName || user.username,
     role: user.role,
     active: Boolean(user.active),
-    moduleAccess: normalizeModuleAccess(user.role, user.moduleAccess)
+    moduleAccess: normalizeModuleAccess(user.role, user.moduleAccess),
+    isQueteFocal: user.isQueteFocal === true
   };
 }
 
@@ -322,6 +377,70 @@ function sanitizeRecruitmentInterestLead(lead) {
         }))
       : []
   };
+}
+
+function sanitizeQueteReservation(reservation, user = null) {
+  return {
+    id: String(reservation._id),
+    shiftId: String(reservation.shiftId),
+    userId: String(reservation.userId),
+    createdAt: reservation.createdAt ? formatDateTime(reservation.createdAt) : null,
+    updatedAt: reservation.updatedAt ? formatDateTime(reservation.updatedAt) : null,
+    user: user ? sanitizeUser(user) : null
+  };
+}
+
+function sanitizeQueteShift(shift, reservations = [], usersMap = new Map(), options = {}) {
+  const capacity = Number(shift.capacity || 0);
+  const reservedCount = reservations.length;
+  const shiftCategory = shift.shiftCategory || 'road';
+  const includeReservations = options.includeReservations === true;
+  const today = formatDateOnly(now());
+  const bookingOpensOn = shift.bookingOpensOn || '';
+  const bookingClosesOn = shift.bookingClosesOn || '';
+  const reservationWindowOpen =
+    (!bookingOpensOn || bookingOpensOn <= today) &&
+    (!bookingClosesOn || bookingClosesOn >= today);
+  return {
+    id: String(shift._id),
+    title: shift.title || `Quete ${shift.shiftType || 'shift'}`,
+    date: shift.dateKey || getDateKey(shift.startAt),
+    dateLabel: shift.dateKey || getDateKey(shift.startAt),
+    shiftType: shift.shiftType || '',
+    shiftCategory,
+    shiftValue: QUETE_SHIFT_CATEGORIES[shiftCategory] || 1,
+    bookingOpensOn,
+    bookingClosesOn,
+    location: shift.location || '',
+    notes: shift.notes || '',
+    startAt: formatDateTime(shift.startAt),
+    endAt: shift.endAt ? formatDateTime(shift.endAt) : null,
+    capacity,
+    reservedCount,
+    availableSeats: Math.max(0, capacity - reservedCount),
+    isFull: reservedCount >= capacity,
+    isReservationOpen: reservationWindowOpen,
+    isActive: shift.isActive !== false,
+    createdAt: shift.createdAt ? formatDateTime(shift.createdAt) : null,
+    reservations: includeReservations
+      ? reservations.map((reservation) =>
+          sanitizeQueteReservation(reservation, usersMap.get(String(reservation.userId)) || null)
+        )
+      : []
+  };
+}
+
+function sortQueteShiftsByAvailability(shifts = []) {
+  return [...shifts].sort((left, right) => {
+    const leftRank = left.isActive !== false && left.isReservationOpen && left.availableSeats > 0 ? 0 : 1;
+    const rightRank = right.isActive !== false && right.isReservationOpen && right.availableSeats > 0 ? 0 : 1;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return new Date(left.startAt).getTime() - new Date(right.startAt).getTime();
+  });
 }
 
 function sanitizePresentationTopic(topic) {
@@ -432,6 +551,10 @@ async function requireAuthenticatedUser(req, res, next) {
   return next();
 }
 
+function isQueteManager(account) {
+  return isAdminAccount(account) || account?.isQueteFocal === true;
+}
+
 async function getBirthdayById(id) {
   const birthdayId = toObjectId(id);
   if (!birthdayId) return null;
@@ -514,6 +637,12 @@ async function getPresentationCriterionById(id) {
   return presentationCriteriaCollection().findOne({ _id: criterionId });
 }
 
+async function getQueteShiftById(id) {
+  const shiftId = toObjectId(id);
+  if (!shiftId) return null;
+  return queteShiftsCollection().findOne({ _id: shiftId });
+}
+
 async function getBookedSlotIdForUser(userId) {
   const booking = await presentationBookingsCollection().findOne({ userId });
   return booking ? booking.slotId : null;
@@ -530,6 +659,8 @@ async function buildDashboardSummary() {
     activeBirthdays,
     totalBloodDonors,
     eligibleBloodDonors,
+    totalQueteShifts,
+    totalQueteReservations,
     presentationTopics,
     assignedPresentationTopics,
     presentationSlots,
@@ -543,6 +674,8 @@ async function buildDashboardSummary() {
     birthdaysCollection().countDocuments({ active: true }),
     bloodDonorsCollection().countDocuments(),
     bloodDonorsCollection().countDocuments({ nextEligibleDonationDate: { $lte: today } }),
+    queteShiftsCollection().countDocuments({ isActive: { $ne: false } }),
+    queteReservationsCollection().countDocuments(),
     presentationTopicsCollection().countDocuments(),
     presentationTopicsCollection().countDocuments({ isAssigned: true }),
     presentationSlotsCollection().countDocuments({ isActive: true }),
@@ -558,6 +691,8 @@ async function buildDashboardSummary() {
     activeBirthdays,
     totalBloodDonors,
     eligibleBloodDonors,
+    totalQueteShifts,
+    totalQueteReservations,
     presentationTopics,
     assignedPresentationTopics,
     presentationSlots,
@@ -574,6 +709,137 @@ async function hydratePresentationSlots(slots, bookings, usersMap) {
       usersMap.get(String((bookingsBySlotId.get(String(slot._id)) || {}).userId || '')) || null
     )
   );
+}
+
+async function buildQueteDashboard(account) {
+  const [shifts, reservations, users] = await Promise.all([
+    queteShiftsCollection().find({ isActive: { $ne: false } }).sort({ startAt: 1 }).toArray(),
+    queteReservationsCollection().find({}).sort({ createdAt: 1 }).toArray(),
+    usersCollection().find({}).sort({ displayName: 1, username: 1 }).toArray()
+  ]);
+
+  const activeUsers = users.filter((user) => user.active !== false);
+  const usersMap = new Map(users.map((user) => [String(user._id), user]));
+  const reservationsByShiftId = reservations.reduce((accumulator, reservation) => {
+    const key = String(reservation.shiftId);
+    const bucket = accumulator.get(key) || [];
+    bucket.push(reservation);
+    accumulator.set(key, bucket);
+    return accumulator;
+  }, new Map());
+  const reservationsByUserId = reservations.reduce((accumulator, reservation) => {
+    const key = String(reservation.userId);
+    const bucket = accumulator.get(key) || [];
+    bucket.push(reservation);
+    accumulator.set(key, bucket);
+    return accumulator;
+  }, new Map());
+
+  const canManage = isQueteManager(account);
+  const today = formatDateOnly(now());
+  const shiftPayload = shifts.map((shift) =>
+    sanitizeQueteShift(
+      shift,
+      reservationsByShiftId.get(String(shift._id)) || [],
+      usersMap,
+      { includeReservations: canManage }
+    )
+  );
+  const myReservations = (reservationsByUserId.get(String(account._id)) || [])
+    .map((reservation) => {
+      const shift = shiftPayload.find((item) => item.id === String(reservation.shiftId));
+      return shift
+        ? {
+            reservationId: String(reservation._id),
+            shift
+          }
+        : null;
+    })
+    .filter(Boolean);
+  const visibleShiftPayload = canManage
+    ? shiftPayload
+    : shiftPayload.filter(
+        (shift) =>
+          shift.isActive !== false &&
+          !myReservations.some((reservation) => reservation.shift.id === shift.id) &&
+          (!shift.bookingOpensOn || shift.bookingOpensOn <= today) &&
+          (!shift.bookingClosesOn || shift.bookingClosesOn >= today)
+      );
+  const sortedVisibleShiftPayload = sortQueteShiftsByAvailability(visibleShiftPayload);
+  const sortedShiftPayload = sortQueteShiftsByAvailability(shiftPayload);
+  const focals = activeUsers
+    .filter((user) => user.isQueteFocal === true || user.role === 'admin')
+    .map(sanitizeUser);
+  const shiftCountsByCategory = shiftPayload.reduce((accumulator, shift) => {
+    const key = shift.shiftCategory || 'road';
+    accumulator[key] = (accumulator[key] || 0) + 1;
+    return accumulator;
+  }, {});
+  const participationReport = users
+    .filter((user) => ['admin', 'member', 'new recruit'].includes(user.role))
+    .map((user) => {
+      const userReservations = reservationsByUserId.get(String(user._id)) || [];
+      const detailedShifts = userReservations
+        .map((reservation) => shiftPayload.find((shift) => shift.id === String(reservation.shiftId)) || null)
+        .filter(Boolean);
+      const roadShifts = detailedShifts.filter((shift) => shift.shiftCategory === 'road').length;
+      const restaurantShifts = detailedShifts.filter((shift) => shift.shiftCategory === 'restaurant').length;
+      const churchShifts = detailedShifts.filter((shift) => shift.shiftCategory === 'church').length;
+      const churchMassShifts = detailedShifts.filter((shift) => shift.shiftCategory === 'churchMass').length;
+      const weightedTotal = detailedShifts.reduce((sum, shift) => sum + (shift.shiftValue || 1), 0);
+
+      return {
+        user: sanitizeUser(user),
+        reservationsCount: detailedShifts.length,
+        roadShifts,
+        restaurantShifts,
+        churchShifts,
+        churchMassShifts,
+        weightedTotal: Number(weightedTotal.toFixed(2))
+      };
+    })
+    .filter((entry) => entry.reservationsCount > 0)
+    .sort((a, b) => b.weightedTotal - a.weightedTotal || a.user.displayName.localeCompare(b.user.displayName));
+  const totalWeightedReservations = participationReport.reduce((sum, entry) => sum + entry.weightedTotal, 0);
+  const totalCapacity = shiftPayload.reduce((sum, shift) => sum + Number(shift.capacity || 0), 0);
+  const filledSeats = shiftPayload.reduce((sum, shift) => sum + Number(shift.reservedCount || 0), 0);
+  const uniqueParticipantIds = new Set(reservations.map((reservation) => String(reservation.userId)));
+  const participantUsers = users.filter((user) => uniqueParticipantIds.has(String(user._id)));
+  const occupancyRate = totalCapacity ? Number(((filledSeats / totalCapacity) * 100).toFixed(2)) : 0;
+
+  return {
+    stats: {
+      totalShifts: shiftPayload.length,
+      totalReservations: reservations.length,
+      openShifts: shiftPayload.filter((shift) => shift.availableSeats > 0).length,
+      totalFocals: focals.length,
+      roadShifts: shiftCountsByCategory.road || 0,
+      restaurantShifts: shiftCountsByCategory.restaurant || 0,
+      churchShifts: shiftCountsByCategory.church || 0,
+      churchMassShifts: shiftCountsByCategory.churchMass || 0,
+      totalCapacity,
+      filledSeats,
+      occupancyRate,
+      uniqueParticipants: uniqueParticipantIds.size,
+      adminParticipants: participantUsers.filter((user) => user.role === 'admin').length,
+      memberParticipants: participantUsers.filter((user) => user.role === 'member').length,
+      recruitParticipants: participantUsers.filter((user) => user.role === 'new recruit').length,
+      totalWeightedReservations: Number(totalWeightedReservations.toFixed(2))
+    },
+    shifts: sortedVisibleShiftPayload,
+    myReservations,
+    focals,
+    canManage,
+    admin: canManage
+      ? {
+          manageableUsers: activeUsers
+            .filter((user) => user.role === 'member' || user.role === 'new recruit' || user.role === 'admin')
+            .map(sanitizeUser),
+          report: participationReport,
+          allShifts: sortedShiftPayload
+        }
+      : null
+  };
 }
 
 async function buildPresentationDashboard(account, options = {}) {
@@ -793,7 +1059,9 @@ app.get('/api/health', async (req, res) => {
     ok: true,
     database: DATABASE_NAME,
     dataFile,
-    telegramConfigured: Boolean(telegram.botToken && telegram.defaultChatId)
+    telegramConfigured: Boolean(
+      telegram.botToken && (telegram.membersGroupChatId || telegram.newRecruitsGroupChatId)
+    )
   });
 });
 
@@ -953,6 +1221,7 @@ app.use('/api', authMiddleware, requireAuthenticatedUser);
 const requireBloodDriveAccess = requireModuleAccess('bloodDrive');
 const requireRecruitmentAccess = requireModuleAccess('recruitment');
 const requirePresentationsAccess = requireModuleAccess('presentations');
+const requireQueteAccess = requireModuleAccess('quete');
 
 app.get('/api/me', async (req, res) => {
   const [summary, telegram, ownBirthdays] = await Promise.all([
@@ -970,7 +1239,8 @@ app.get('/api/me', async (req, res) => {
     telegram: {
       timezone: telegram.timezone,
       hasBotToken: Boolean(telegram.botToken),
-      defaultChatId: telegram.defaultChatId
+      membersGroupChatId: telegram.membersGroupChatId,
+      newRecruitsGroupChatId: telegram.newRecruitsGroupChatId
     },
     ownBirthdays: ownBirthdays.map(sanitizeBirthday)
   });
@@ -988,7 +1258,8 @@ app.post('/api/users', requireRole('admin'), async (req, res) => {
     displayName,
     role = 'member',
     active = true,
-    moduleAccess = createDefaultModuleAccess(role)
+    moduleAccess = createDefaultModuleAccess(role),
+    isQueteFocal = false
   } = req.body || {};
 
   if (!username || !password || !displayName) {
@@ -1012,6 +1283,7 @@ app.post('/api/users', requireRole('admin'), async (req, res) => {
     displayName: String(displayName).trim(),
     role,
     moduleAccess: normalizeModuleAccess(role, moduleAccess),
+    isQueteFocal: Boolean(isQueteFocal),
     active: Boolean(active),
     createdAt: now(),
     updatedAt: now()
@@ -1034,7 +1306,7 @@ app.put('/api/users/:id', requireRole('admin'), async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  const { username, password, displayName, role, active, moduleAccess } = req.body || {};
+  const { username, password, displayName, role, active, moduleAccess, isQueteFocal } = req.body || {};
   const updates = { updatedAt: now() };
   let resolvedRole = existing.role;
 
@@ -1078,6 +1350,10 @@ app.put('/api/users/:id', requireRole('admin'), async (req, res) => {
 
   if (typeof active === 'boolean') {
     updates.active = active;
+  }
+
+  if (typeof isQueteFocal === 'boolean') {
+    updates.isQueteFocal = isQueteFocal;
   }
 
   await usersCollection().updateOne({ _id: userId }, { $set: updates });
@@ -1831,6 +2107,423 @@ app.delete('/api/blood-drive/donors/:id', requireRole('admin'), requireBloodDriv
   return res.status(204).send();
 });
 
+app.get('/api/quete/dashboard', requireQueteAccess, async (req, res) => {
+  try {
+    const dashboard = await buildQueteDashboard(req.account);
+    res.json(dashboard);
+  } catch (error) {
+    console.error('Failed to load quete dashboard.', error);
+    res.status(500).json({ error: 'Failed to load quete dashboard.' });
+  }
+});
+
+app.get('/api/quete/report/export', requireRole('admin'), requireQueteAccess, async (req, res) => {
+  try {
+    const dashboard = await buildQueteDashboard(req.account);
+    const summaryRows = [
+      { Metric: 'Total shifts', Value: dashboard.stats.totalShifts },
+      { Metric: 'Total reservations', Value: dashboard.stats.totalReservations },
+      { Metric: 'Open shifts', Value: dashboard.stats.openShifts },
+      { Metric: 'Total focals', Value: dashboard.stats.totalFocals },
+      { Metric: 'Road shifts', Value: dashboard.stats.roadShifts },
+      { Metric: 'Restaurant shifts', Value: dashboard.stats.restaurantShifts },
+      { Metric: 'Church shifts', Value: dashboard.stats.churchShifts },
+      { Metric: 'Church masses', Value: dashboard.stats.churchMassShifts },
+      { Metric: 'Total capacity', Value: dashboard.stats.totalCapacity },
+      { Metric: 'Filled seats', Value: dashboard.stats.filledSeats },
+      { Metric: 'Occupancy rate (%)', Value: dashboard.stats.occupancyRate },
+      { Metric: 'Unique participants', Value: dashboard.stats.uniqueParticipants },
+      { Metric: 'Admin participants', Value: dashboard.stats.adminParticipants },
+      { Metric: 'Member participants', Value: dashboard.stats.memberParticipants },
+      { Metric: 'New recruit participants', Value: dashboard.stats.recruitParticipants },
+      { Metric: 'Weighted shifts taken', Value: dashboard.stats.totalWeightedReservations }
+    ];
+
+    const participantRows = (dashboard.admin?.report || []).map((entry) => ({
+      Name: entry.user.displayName,
+      Role: entry.user.role,
+      'Road shifts': entry.roadShifts,
+      'Restaurant shifts': entry.restaurantShifts,
+      'Church shifts': entry.churchShifts,
+      'Church masses': entry.churchMassShifts,
+      Reservations: entry.reservationsCount,
+      'Weighted total': entry.weightedTotal
+    }));
+
+    const shiftRows = (dashboard.admin?.allShifts || dashboard.shifts || []).map((shift) => ({
+      Title: shift.title,
+      Date: shift.date,
+      'Shift type': shift.shiftType,
+      Category: shift.shiftCategory,
+      'Shift weight': shift.shiftValue,
+      'Booking opens on': shift.bookingOpensOn || '',
+      'Booking closes on': shift.bookingClosesOn || '',
+      Capacity: shift.capacity,
+      Reserved: shift.reservedCount,
+      'Available seats': shift.availableSeats,
+      Location: shift.location || '',
+      Notes: shift.notes || ''
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(participantRows), 'Participation Report');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Insights');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(shiftRows), 'Shifts');
+    const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="quete-report-${formatDateOnly(now())}.xlsx"`);
+    res.send(workbookBuffer);
+  } catch (error) {
+    console.error('Failed to export quete report.', error);
+    res.status(500).json({ error: 'Failed to export quete report.' });
+  }
+});
+
+app.post('/api/quete/shifts', requireQueteAccess, async (req, res) => {
+  if (!isQueteManager(req.account)) {
+    return res.status(403).json({ error: 'Only admins and quete focals can create shifts.' });
+  }
+
+  const { title, shiftType, shiftCategory = 'road', date, startAt, endAt, bookingOpensOn, bookingClosesOn, capacity, location = '', notes = '' } = req.body || {};
+  const nextShiftType = String(shiftType || '').trim().toLowerCase();
+  const nextShiftCategory = String(shiftCategory || '').trim().toLowerCase();
+  const nextCapacity = Number(capacity);
+  const nextStartAt = combineDateAndTime(date, startAt);
+  const nextEndAt = endAt ? combineDateAndTime(date, endAt) : null;
+
+  if (!QUETE_SHIFT_TYPES.has(nextShiftType)) {
+    return res.status(400).json({ error: 'Shift type must be morning or afternoon.' });
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(QUETE_SHIFT_CATEGORIES, nextShiftCategory)) {
+    return res.status(400).json({ error: 'Shift category must be road or restaurant.' });
+  }
+
+  if (Number.isNaN(nextStartAt.getTime())) {
+    return res.status(400).json({ error: 'A valid shift date and start time are required.' });
+  }
+
+  if (!Number.isInteger(nextCapacity) || nextCapacity < 1) {
+    return res.status(400).json({ error: 'capacity must be at least 1.' });
+  }
+
+  if (bookingOpensOn && !isValidDateKey(bookingOpensOn)) {
+    return res.status(400).json({ error: 'bookingOpensOn must be a valid date.' });
+  }
+
+  if (bookingClosesOn && !isValidDateKey(bookingClosesOn)) {
+    return res.status(400).json({ error: 'bookingClosesOn must be a valid date.' });
+  }
+
+  if (nextEndAt && Number.isNaN(nextEndAt.getTime())) {
+    return res.status(400).json({ error: 'The shift end time is invalid.' });
+  }
+
+  if (nextEndAt && nextEndAt <= nextStartAt) {
+    return res.status(400).json({ error: 'The shift end time must be after the start time.' });
+  }
+
+  const nextDateKey = getDateKey(date || nextStartAt);
+  const nextBookingOpensOn = String(bookingOpensOn || '').trim() || nextDateKey;
+  const nextBookingClosesOn = String(bookingClosesOn || '').trim() || nextDateKey;
+
+  if (nextBookingOpensOn > nextBookingClosesOn) {
+    return res.status(400).json({ error: 'Booking open date must be on or before the booking close date.' });
+  }
+
+  if (nextBookingClosesOn > nextDateKey) {
+    return res.status(400).json({ error: 'Booking close date must be on or before the shift date.' });
+  }
+
+  const payload = {
+    title: String(title || `Quete ${nextShiftType}`).trim() || `Quete ${nextShiftType}`,
+    shiftType: nextShiftType,
+    shiftCategory: nextShiftCategory,
+    dateKey: nextDateKey,
+    startAt: nextStartAt,
+    endAt: nextEndAt,
+    bookingOpensOn: nextBookingOpensOn,
+    bookingClosesOn: nextBookingClosesOn,
+    capacity: nextCapacity,
+    location: String(location || '').trim(),
+    notes: String(notes || '').trim(),
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now(),
+    createdByUserId: req.account._id
+  };
+
+  try {
+    const result = await queteShiftsCollection().insertOne(payload);
+    res.status(201).json(sanitizeQueteShift({ ...payload, _id: result.insertedId }));
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'A shift with the same date and shift type already exists.' });
+    }
+
+    return res.status(500).json({ error: 'Failed to create quete shift.' });
+  }
+});
+
+app.put('/api/quete/shifts/:id', requireQueteAccess, async (req, res) => {
+  if (!isQueteManager(req.account)) {
+    return res.status(403).json({ error: 'Only admins and quete focals can edit shifts.' });
+  }
+
+  const shift = await getQueteShiftById(req.params.id);
+  if (!shift) {
+    return res.status(404).json({ error: 'Quete shift not found.' });
+  }
+
+  const { title, shiftType, shiftCategory, date, startAt, endAt, bookingOpensOn, bookingClosesOn, capacity, location, notes, isActive } = req.body || {};
+  const updates = { updatedAt: now() };
+
+  if (title !== undefined) updates.title = String(title || '').trim();
+  if (location !== undefined) updates.location = String(location || '').trim();
+  if (notes !== undefined) updates.notes = String(notes || '').trim();
+  if (typeof isActive === 'boolean') updates.isActive = isActive;
+  if (bookingOpensOn !== undefined && bookingOpensOn && !isValidDateKey(bookingOpensOn)) {
+      return res.status(400).json({ error: 'bookingOpensOn must be a valid date.' });
+  }
+  if (bookingClosesOn !== undefined && bookingClosesOn && !isValidDateKey(bookingClosesOn)) {
+    return res.status(400).json({ error: 'bookingClosesOn must be a valid date.' });
+  }
+  if (bookingOpensOn !== undefined) updates.bookingOpensOn = String(bookingOpensOn || '').trim();
+  if (bookingClosesOn !== undefined) updates.bookingClosesOn = String(bookingClosesOn || '').trim();
+
+  const nextShiftType = shiftType !== undefined ? String(shiftType || '').trim().toLowerCase() : shift.shiftType;
+  if (!QUETE_SHIFT_TYPES.has(nextShiftType)) {
+    return res.status(400).json({ error: 'Shift type must be morning or afternoon.' });
+  }
+  updates.shiftType = nextShiftType;
+
+  const nextShiftCategory = shiftCategory !== undefined ? String(shiftCategory || '').trim().toLowerCase() : (shift.shiftCategory || 'road');
+  if (!Object.prototype.hasOwnProperty.call(QUETE_SHIFT_CATEGORIES, nextShiftCategory)) {
+    return res.status(400).json({ error: 'Shift category must be road or restaurant.' });
+  }
+  updates.shiftCategory = nextShiftCategory;
+
+  const nextStartAt = startAt !== undefined || date !== undefined
+    ? combineDateAndTime(date || getDateKey(shift.startAt), startAt || formatDateTime(shift.startAt))
+    : new Date(shift.startAt);
+  if (Number.isNaN(nextStartAt.getTime())) {
+    return res.status(400).json({ error: 'A valid shift date and start time are required.' });
+  }
+  updates.startAt = nextStartAt;
+  updates.dateKey = getDateKey(date || nextStartAt || shift.startAt);
+
+  const nextEndAt = endAt !== undefined
+    ? (endAt ? combineDateAndTime(date || getDateKey(nextStartAt), endAt) : null)
+    : shift.endAt;
+  if (nextEndAt && Number.isNaN(new Date(nextEndAt).getTime())) {
+    return res.status(400).json({ error: 'The shift end time is invalid.' });
+  }
+  if (nextEndAt && new Date(nextEndAt) <= nextStartAt) {
+    return res.status(400).json({ error: 'The shift end time must be after the start time.' });
+  }
+  updates.endAt = nextEndAt ? new Date(nextEndAt) : null;
+
+  const nextBookingOpensOn = bookingOpensOn !== undefined
+    ? String(bookingOpensOn || '').trim()
+    : String(shift.bookingOpensOn || '').trim();
+  const nextBookingClosesOn = bookingClosesOn !== undefined
+    ? String(bookingClosesOn || '').trim()
+    : String(shift.bookingClosesOn || '').trim();
+
+  if (nextBookingOpensOn && nextBookingClosesOn && nextBookingOpensOn > nextBookingClosesOn) {
+    return res.status(400).json({ error: 'Booking open date must be on or before the booking close date.' });
+  }
+
+  if (nextBookingClosesOn && nextBookingClosesOn > updates.dateKey) {
+    return res.status(400).json({ error: 'Booking close date must be on or before the shift date.' });
+  }
+
+  if (capacity !== undefined) {
+    const nextCapacity = Number(capacity);
+    if (!Number.isInteger(nextCapacity) || nextCapacity < 1) {
+      return res.status(400).json({ error: 'capacity must be at least 1.' });
+    }
+
+    const reservedCount = await queteReservationsCollection().countDocuments({ shiftId: shift._id });
+    if (reservedCount > nextCapacity) {
+      return res.status(409).json({ error: 'Capacity cannot be less than the current number of reservations.' });
+    }
+    updates.capacity = nextCapacity;
+  }
+
+  try {
+    await queteShiftsCollection().updateOne({ _id: shift._id }, { $set: updates });
+    const nextShift = await queteShiftsCollection().findOne({ _id: shift._id });
+    const reservations = await queteReservationsCollection().find({ shiftId: shift._id }).toArray();
+    const users = await usersCollection().find({ _id: { $in: reservations.map((item) => item.userId) } }).toArray();
+    res.json(sanitizeQueteShift(nextShift, reservations, new Map(users.map((user) => [String(user._id), user]))));
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'A shift with the same date and shift type already exists.' });
+    }
+
+    return res.status(500).json({ error: 'Failed to update quete shift.' });
+  }
+});
+
+app.delete('/api/quete/shifts/:id', requireRole('admin'), requireQueteAccess, async (req, res) => {
+  const shift = await getQueteShiftById(req.params.id);
+  if (!shift) {
+    return res.status(404).json({ error: 'Quete shift not found.' });
+  }
+
+  const reservationCount = await queteReservationsCollection().countDocuments({ shiftId: shift._id });
+  if (reservationCount > 0) {
+    return res.status(409).json({ error: 'Shifts with reservations cannot be deleted.' });
+  }
+
+  await queteShiftsCollection().deleteOne({ _id: shift._id });
+  res.status(204).send();
+});
+
+app.post('/api/quete/shifts/:id/reserve', requireQueteAccess, async (req, res) => {
+  const shift = await getQueteShiftById(req.params.id);
+  if (!shift || shift.isActive === false) {
+    return res.status(404).json({ error: 'Quete shift not found.' });
+  }
+
+  const existingReservation = await queteReservationsCollection().findOne({
+    shiftId: shift._id,
+    userId: req.account._id
+  });
+  if (existingReservation) {
+    return res.status(409).json({ error: 'You already reserved this shift.' });
+  }
+
+  const today = formatDateOnly(now());
+  if (shift.bookingOpensOn && shift.bookingOpensOn > today) {
+    return res.status(409).json({ error: 'Reservations for this shift are not open yet.' });
+  }
+
+  if (!isAdminAccount(req.account) && shift.bookingClosesOn && shift.bookingClosesOn < today) {
+    return res.status(409).json({ error: 'Reservations for this shift are closed.' });
+  }
+
+  const reservedCount = await queteReservationsCollection().countDocuments({ shiftId: shift._id });
+  if (reservedCount >= Number(shift.capacity || 0)) {
+    return res.status(409).json({ error: 'This shift is already full.' });
+  }
+
+  const payload = {
+    shiftId: shift._id,
+    userId: req.account._id,
+    createdAt: now(),
+    updatedAt: now(),
+    createdByUserId: req.account._id
+  };
+
+  try {
+    await queteReservationsCollection().insertOne(payload);
+    const dashboard = await buildQueteDashboard(req.account);
+    res.status(201).json(dashboard);
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'You already reserved this shift.' });
+    }
+    return res.status(500).json({ error: 'Failed to reserve quete shift.' });
+  }
+});
+
+app.delete('/api/quete/shifts/:id/reservations/me', requireQueteAccess, async (req, res) => {
+  if (!isQueteManager(req.account)) {
+    return res.status(403).json({ error: 'Only admins and quete focals can cancel reservations.' });
+  }
+
+  const shift = await getQueteShiftById(req.params.id);
+  if (!shift) {
+    return res.status(404).json({ error: 'Quete shift not found.' });
+  }
+
+  await queteReservationsCollection().deleteOne({
+    shiftId: shift._id,
+    userId: req.account._id
+  });
+
+  const dashboard = await buildQueteDashboard(req.account);
+  res.json(dashboard);
+});
+
+app.post('/api/quete/shifts/:id/reservations/manage', requireQueteAccess, async (req, res) => {
+  if (!isQueteManager(req.account)) {
+    return res.status(403).json({ error: 'Only admins and quete focals can manage other reservations.' });
+  }
+
+  const shift = await getQueteShiftById(req.params.id);
+  if (!shift || shift.isActive === false) {
+    return res.status(404).json({ error: 'Quete shift not found.' });
+  }
+
+  const targetUserId = toObjectId(req.body?.userId);
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'A valid userId is required.' });
+  }
+
+  const targetUser = await usersCollection().findOne({ _id: targetUserId, active: { $ne: false } });
+  if (!targetUser) {
+    return res.status(404).json({ error: 'Target user not found.' });
+  }
+
+  if (!hasModuleAccess(targetUser, 'quete')) {
+    return res.status(409).json({ error: 'This user does not have access to Quete.' });
+  }
+
+  const existingReservation = await queteReservationsCollection().findOne({ shiftId: shift._id, userId: targetUserId });
+  if (existingReservation) {
+    return res.status(409).json({ error: 'This user already reserved the selected shift.' });
+  }
+
+  const today = formatDateOnly(now());
+  if (shift.bookingOpensOn && shift.bookingOpensOn > today) {
+    return res.status(409).json({ error: 'Reservations for this shift are not open yet.' });
+  }
+
+  if (!isAdminAccount(req.account) && shift.bookingClosesOn && shift.bookingClosesOn < today) {
+    return res.status(409).json({ error: 'Reservations for this shift are closed.' });
+  }
+
+  const reservedCount = await queteReservationsCollection().countDocuments({ shiftId: shift._id });
+  if (reservedCount >= Number(shift.capacity || 0)) {
+    return res.status(409).json({ error: 'This shift is already full.' });
+  }
+
+  await queteReservationsCollection().insertOne({
+    shiftId: shift._id,
+    userId: targetUserId,
+    createdAt: now(),
+    updatedAt: now(),
+    createdByUserId: req.account._id
+  });
+
+  const dashboard = await buildQueteDashboard(req.account);
+  res.status(201).json(dashboard);
+});
+
+app.delete('/api/quete/shifts/:shiftId/reservations/:reservationId', requireQueteAccess, async (req, res) => {
+  if (!isQueteManager(req.account)) {
+    return res.status(403).json({ error: 'Only admins and quete focals can manage other reservations.' });
+  }
+
+  const shift = await getQueteShiftById(req.params.shiftId);
+  const reservationId = toObjectId(req.params.reservationId);
+  if (!shift || !reservationId) {
+    return res.status(404).json({ error: 'Quete reservation not found.' });
+  }
+
+  await queteReservationsCollection().deleteOne({
+    _id: reservationId,
+    shiftId: shift._id
+  });
+
+  const dashboard = await buildQueteDashboard(req.account);
+  res.json(dashboard);
+});
+
 app.get('/api/presentations/dashboard', requirePresentationsAccess, async (req, res) => {
   try {
     const dashboard = await buildPresentationDashboard(req.account, { year: req.query.year });
@@ -2280,7 +2973,8 @@ app.put('/api/presentations/evaluations/:presenterId', requireRole('admin', 'mem
 app.get('/api/settings', requireRole('admin'), async (req, res) => {
   const telegram = await readTelegramSettings();
   res.json({
-    defaultChatId: telegram.defaultChatId,
+    membersGroupChatId: telegram.membersGroupChatId,
+    newRecruitsGroupChatId: telegram.newRecruitsGroupChatId,
     birthdayMessageTemplate: telegram.birthdayMessageTemplate,
     timezone: telegram.timezone,
     hasBotToken: Boolean(telegram.botToken)
@@ -2288,16 +2982,18 @@ app.get('/api/settings', requireRole('admin'), async (req, res) => {
 });
 
 app.put('/api/settings', requireRole('admin'), async (req, res) => {
-  const { defaultChatId } = req.body || {};
-  const telegram = await readTelegramSettings();
+  const { membersGroupChatId, newRecruitsGroupChatId } = req.body || {};
 
   const updated = await writeTelegramSettings({
-    ...telegram,
-    defaultChatId: typeof defaultChatId === 'string' ? defaultChatId.trim() : telegram.defaultChatId
+    membersGroupChatId:
+      typeof membersGroupChatId === 'string' ? membersGroupChatId.trim() : undefined,
+    newRecruitsGroupChatId:
+      typeof newRecruitsGroupChatId === 'string' ? newRecruitsGroupChatId.trim() : undefined
   });
 
   res.json({
-    defaultChatId: updated.defaultChatId,
+    membersGroupChatId: updated.membersGroupChatId,
+    newRecruitsGroupChatId: updated.newRecruitsGroupChatId,
     birthdayMessageTemplate: updated.birthdayMessageTemplate,
     timezone: updated.timezone,
     hasBotToken: Boolean(updated.botToken)
