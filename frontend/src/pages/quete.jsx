@@ -49,6 +49,7 @@ function buildShiftDraftFromShift(shift) {
 function filterShiftsByDateAndLocation(shifts = [], filters = {}) {
   const normalizedDate = String(filters.date || '').trim();
   const normalizedLocation = String(filters.location || '').trim().toLowerCase();
+  const now = Date.now();
 
   return shifts
     .filter((shift) => {
@@ -56,7 +57,22 @@ function filterShiftsByDateAndLocation(shifts = [], filters = {}) {
       const matchesLocation = !normalizedLocation || String(shift.location || '').toLowerCase().includes(normalizedLocation);
       return matchesDate && matchesLocation;
     })
-    .sort((left, right) => new Date(left.startAt).getTime() - new Date(right.startAt).getTime());
+    .sort((left, right) => {
+      const leftTime = new Date(left.startAt).getTime();
+      const rightTime = new Date(right.startAt).getTime();
+      const leftIsUpcoming = leftTime >= now;
+      const rightIsUpcoming = rightTime >= now;
+
+      if (leftIsUpcoming !== rightIsUpcoming) {
+        return leftIsUpcoming ? -1 : 1;
+      }
+
+      if (leftIsUpcoming && rightIsUpcoming) {
+        return leftTime - rightTime;
+      }
+
+      return rightTime - leftTime;
+    });
 }
 
 function ShiftCard({
