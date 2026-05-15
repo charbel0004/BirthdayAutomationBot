@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCompactDate, formatDateOnlyLabel, formatDateTime, formatTimeOnlyLabel } from '../lib/app';
 import { MetricBarChart, ModuleCard, QueteIcon } from '../components/common';
 import { pages } from '../lib/state';
@@ -44,6 +44,19 @@ function buildShiftDraftFromShift(shift) {
     location: shift.location || '',
     notes: shift.notes || ''
   };
+}
+
+function filterShiftsByDateAndLocation(shifts = [], filters = {}) {
+  const normalizedDate = String(filters.date || '').trim();
+  const normalizedLocation = String(filters.location || '').trim().toLowerCase();
+
+  return shifts
+    .filter((shift) => {
+      const matchesDate = !normalizedDate || shift.date === normalizedDate || toLocalDateInputValue(shift.startAt) === normalizedDate;
+      const matchesLocation = !normalizedLocation || String(shift.location || '').toLowerCase().includes(normalizedLocation);
+      return matchesDate && matchesLocation;
+    })
+    .sort((left, right) => new Date(left.startAt).getTime() - new Date(right.startAt).getTime());
 }
 
 function ShiftCard({
@@ -218,7 +231,12 @@ function ShiftCard({
 
 function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manageableUsers, assignmentDraft, onAssignmentChange, onReserve, onAssignUser, onRemoveReservation, onBack, children, showShiftList = true, showMemberManager = false }) {
   const [openShiftId, setOpenShiftId] = useState('');
+  const [filters, setFilters] = useState({ date: '', location: '' });
   const myShiftIds = new Set((data.myReservations || []).map((item) => item.shift.id));
+  const filteredShifts = useMemo(
+    () => filterShiftsByDateAndLocation(data.shifts || [], filters),
+    [data.shifts, filters]
+  );
   const shiftMixItems = useMemo(() => ([
     { label: 'Road', value: data.stats.roadShifts || 0 },
     { label: 'Restaurant', value: data.stats.restaurantShifts || 0 },
@@ -294,8 +312,29 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
               <p>Morning and afternoon capacity updates in real time as people are added or removed.</p>
             </div>
           </div>
+          <form className="filter-form repository-filter-form" onSubmit={(event) => event.preventDefault()}>
+            <label>
+              <span>Date</span>
+              <input
+                type="date"
+                value={filters.date}
+                onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))}
+              />
+            </label>
+            <label>
+              <span>Location</span>
+              <input
+                placeholder="Filter by location"
+                value={filters.location}
+                onChange={(event) => setFilters((current) => ({ ...current, location: event.target.value }))}
+              />
+            </label>
+            <div className="repository-filter-actions">
+              <button type="button" className="secondary" onClick={() => setFilters({ date: '', location: '' })}>Clear</button>
+            </div>
+          </form>
           <div className="repository-card-list quete-shift-list">
-            {data.shifts.length ? data.shifts.map((shift) => (
+            {filteredShifts.length ? filteredShifts.map((shift) => (
               <ShiftCard
                 key={shift.id}
                 shift={shift}
@@ -313,8 +352,8 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
               />
             )) : (
               <div className="repository-empty-state">
-                <strong>No quete shifts yet.</strong>
-                <span>Admins can create the first morning or afternoon shift from the Quete page.</span>
+                <strong>No matching quete shifts.</strong>
+                <span>Try a different date or location filter.</span>
               </div>
             )}
           </div>
@@ -432,6 +471,24 @@ function QueteManagerLandingPage({ isAdmin, data, onNavigate, onBack }) {
 
 function QueteShiftSetupPanel({ draft, setDraft, shifts, onSaveShift, onStartEditShift, onCancelEditShift }) {
   const isEditing = Boolean(draft.id);
+  const formRef = useRef(null);
+  const titleInputRef = useRef(null);
+  const [filters, setFilters] = useState({ date: '', location: '' });
+  const filteredShifts = useMemo(
+    () => filterShiftsByDateAndLocation(shifts, filters),
+    [shifts, filters]
+  );
+
+  useEffect(() => {
+    if (!isEditing) {
+      return;
+    }
+
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => {
+      titleInputRef.current?.focus();
+    }, 150);
+  }, [isEditing, draft.id]);
 
   return (
     <section className="panel">
@@ -442,10 +499,10 @@ function QueteShiftSetupPanel({ draft, setDraft, shifts, onSaveShift, onStartEdi
         </div>
         {isEditing ? <button type="button" className="secondary" onClick={onCancelEditShift}>Cancel Edit</button> : null}
       </div>
-      <form className="grid-form quete-create-form" onSubmit={onSaveShift}>
+      <form ref={formRef} className="grid-form quete-create-form" onSubmit={onSaveShift}>
         <label>
           Title
-          <input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Quete Jbeil Highway" />
+          <input ref={titleInputRef} value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Quete Jbeil Highway" />
         </label>
         <label>
           Shift type
@@ -497,8 +554,29 @@ function QueteShiftSetupPanel({ draft, setDraft, shifts, onSaveShift, onStartEdi
         </label>
         <button type="submit">{isEditing ? 'Save Shift Changes' : 'Create Shift'}</button>
       </form>
+      <form className="filter-form repository-filter-form" style={{ marginTop: 16 }} onSubmit={(event) => event.preventDefault()}>
+        <label>
+          <span>Date</span>
+          <input
+            type="date"
+            value={filters.date}
+            onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Location</span>
+          <input
+            placeholder="Filter by location"
+            value={filters.location}
+            onChange={(event) => setFilters((current) => ({ ...current, location: event.target.value }))}
+          />
+        </label>
+        <div className="repository-filter-actions">
+          <button type="button" className="secondary" onClick={() => setFilters({ date: '', location: '' })}>Clear</button>
+        </div>
+      </form>
       <div className="repository-card-list quete-focal-list" style={{ marginTop: 16 }}>
-        {shifts.length ? shifts.map((shift) => (
+        {filteredShifts.length ? filteredShifts.map((shift) => (
           <article key={shift.id} className="repository-card">
             <div className="repository-card-head">
               <div>
@@ -518,8 +596,8 @@ function QueteShiftSetupPanel({ draft, setDraft, shifts, onSaveShift, onStartEdi
           </article>
         )) : (
           <div className="repository-empty-state">
-            <strong>No shifts created yet.</strong>
-            <span>Create a shift first, then you will be able to edit it from here.</span>
+            <strong>No matching shifts found.</strong>
+            <span>Try a different date or location filter.</span>
           </div>
         )}
       </div>

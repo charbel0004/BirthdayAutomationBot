@@ -59,6 +59,7 @@ app.use(express.json());
 const USER_ROLES = ['admin', 'member', 'new recruit'];
 const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations', 'quete'];
 const QUETE_SHIFT_TYPES = new Set(['morning', 'afternoon']);
+const QUETE_TIMEZONE = process.env.QUETE_TIMEZONE || process.env.BOT_TIMEZONE || 'Asia/Beirut';
 const QUETE_SHIFT_CATEGORIES = {
   road: 1,
   restaurant: 0.5,
@@ -103,7 +104,43 @@ function getDateKey(value) {
     return '';
   }
 
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTimeKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function getTimeZoneOffsetMinutes(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = Number(parts.find((part) => part.type === 'year')?.value || 0);
+  const month = Number(parts.find((part) => part.type === 'month')?.value || 1);
+  const day = Number(parts.find((part) => part.type === 'day')?.value || 1);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  const second = Number(parts.find((part) => part.type === 'second')?.value || 0);
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  return (asUtc - date.getTime()) / 60000;
 }
 
 function combineDateAndTime(dateValue, timeValue) {
@@ -126,7 +163,11 @@ function combineDateAndTime(dateValue, timeValue) {
     return new Date('');
   }
 
-  return new Date(`${trimmedDate}T${trimmedTime}:00`);
+  const [year, month, day] = trimmedDate.split('-').map(Number);
+  const [hour, minute] = trimmedTime.split(':').map(Number);
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const offsetMinutes = getTimeZoneOffsetMinutes(utcGuess, QUETE_TIMEZONE);
+  return new Date(utcGuess.getTime() - offsetMinutes * 60_000);
 }
 
 function getPresentationYear(value) {
@@ -2321,17 +2362,18 @@ app.put('/api/quete/shifts/:id', requireQueteAccess, async (req, res) => {
   }
   updates.shiftCategory = nextShiftCategory;
 
+  const baseDateKey = date || getDateKey(shift.startAt);
   const nextStartAt = startAt !== undefined || date !== undefined
-    ? combineDateAndTime(date || getDateKey(shift.startAt), startAt || formatDateTime(shift.startAt))
+    ? combineDateAndTime(baseDateKey, startAt || getTimeKey(shift.startAt))
     : new Date(shift.startAt);
   if (Number.isNaN(nextStartAt.getTime())) {
     return res.status(400).json({ error: 'A valid shift date and start time are required.' });
   }
   updates.startAt = nextStartAt;
-  updates.dateKey = getDateKey(date || nextStartAt || shift.startAt);
+  updates.dateKey = getDateKey(baseDateKey || nextStartAt || shift.startAt);
 
   const nextEndAt = endAt !== undefined
-    ? (endAt ? combineDateAndTime(date || getDateKey(nextStartAt), endAt) : null)
+    ? (endAt ? combineDateAndTime(baseDateKey || getDateKey(nextStartAt), endAt) : null)
     : shift.endAt;
   if (nextEndAt && Number.isNaN(new Date(nextEndAt).getTime())) {
     return res.status(400).json({ error: 'The shift end time is invalid.' });
