@@ -86,6 +86,16 @@ export const emptyPresentationScoreForm = {
   comment: ''
 };
 
+export const emptyQueteAssignment = {
+  userId: '',
+  query: ''
+};
+
+export const emptyQueteFocalDraft = {
+  userId: '',
+  query: ''
+};
+
 const sessionExpiryErrors = new Set([
   'Unauthorized',
   'Invalid token',
@@ -215,6 +225,32 @@ export function formatDateTime(value) {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
+    });
+  } catch {
+    return value;
+  }
+}
+
+export function formatDateOnlyLabel(value) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString('en-GB', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch {
+    return value;
+  }
+}
+
+export function formatTimeOnlyLabel(value) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
     });
   } catch {
     return value;

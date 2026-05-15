@@ -1,5 +1,8 @@
 export const pages = {
   home: 'home',
+  adminBirthdays: 'admin-birthdays',
+  adminUsers: 'admin-users',
+  adminSettings: 'admin-settings',
   bloodDrive: 'blood-drive',
   eligibleDonors: 'eligible-donors',
   repository: 'repository',
@@ -8,15 +11,22 @@ export const pages = {
   recruitmentRepository: 'recruitment-repository',
   recruitmentCallCenter: 'recruitment-call-center',
   recruitmentInterestPublic: 'recruitment-interest',
-  presentations: 'presentations'
+  presentations: 'presentations',
+  quete: 'quete',
+  queteBoard: 'quete-board',
+  queteMembers: 'quete-members',
+  queteShiftSetup: 'quete-shift-setup',
+  queteReport: 'quete-report',
+  queteFocals: 'quete-focals'
 };
 
-export const moduleAccessKeys = ['bloodDrive', 'recruitment', 'presentations'];
+export const moduleAccessKeys = ['bloodDrive', 'recruitment', 'presentations', 'quete'];
 
 export const moduleAccessLabels = {
   bloodDrive: 'Blood Drive',
   recruitment: 'Recruitment',
-  presentations: 'Presentations'
+  presentations: 'Presentations',
+  quete: 'Quete'
 };
 
 const routeToPage = {
@@ -30,7 +40,16 @@ const routeToPage = {
   'recruitment-repository': pages.recruitmentRepository,
   'recruitment-call-center': pages.recruitmentCallCenter,
   'recruitment-interest': pages.recruitmentInterestPublic,
-  presentations: pages.presentations
+  presentations: pages.presentations,
+  quete: pages.quete,
+  'quete-board': pages.queteBoard,
+  'quete-members': pages.queteMembers,
+  'admin-birthdays': pages.adminBirthdays,
+  'admin-users': pages.adminUsers,
+  'admin-settings': pages.adminSettings,
+  'quete-shift-setup': pages.queteShiftSetup,
+  'quete-report': pages.queteReport,
+  'quete-focals': pages.queteFocals
 };
 
 export function getPageFromHash(hash = window.location.hash) {
@@ -52,9 +71,27 @@ export function getHashForPage(page) {
 
 export function createDefaultSettings() {
   return {
-    defaultChatId: '',
+    membersGroupChatId: '',
+    newRecruitsGroupChatId: '',
     timezone: 'Asia/Beirut',
     hasBotToken: false
+  };
+}
+
+export function createEmptyQueteShift() {
+  return {
+    id: '',
+    title: '',
+    shiftType: 'morning',
+    shiftCategory: 'road',
+    date: '',
+    startAt: '',
+    endAt: '',
+    bookingOpensOn: '',
+    bookingClosesOn: '',
+    capacity: 2,
+    location: '',
+    notes: ''
   };
 }
 
@@ -74,7 +111,8 @@ export function createEmptyUser() {
     password: '',
     role: 'member',
     active: true,
-    moduleAccess: createDefaultModuleAccess('member')
+    moduleAccess: createDefaultModuleAccess('member'),
+    isQueteFocal: false
   };
 }
 
@@ -83,7 +121,8 @@ export function createDefaultModuleAccess(role = 'member') {
     return {
       bloodDrive: true,
       recruitment: true,
-      presentations: true
+      presentations: true,
+      quete: true
     };
   }
 
@@ -91,14 +130,16 @@ export function createDefaultModuleAccess(role = 'member') {
     return {
       bloodDrive: false,
       recruitment: false,
-      presentations: true
+      presentations: true,
+      quete: true
     };
   }
 
   return {
     bloodDrive: true,
     recruitment: true,
-    presentations: true
+    presentations: true,
+    quete: true
   };
 }
 
@@ -149,4 +190,32 @@ export function createEmptyPresentationData(year) {
 
 export function createEmptyPresentationReport() {
   return { rankings: [] };
+}
+
+export function createEmptyQueteData() {
+  return {
+    stats: {
+      totalShifts: 0,
+      totalReservations: 0,
+      openShifts: 0,
+      totalFocals: 0,
+      roadShifts: 0,
+      restaurantShifts: 0,
+      churchShifts: 0,
+      churchMassShifts: 0,
+      totalCapacity: 0,
+      filledSeats: 0,
+      occupancyRate: 0,
+      uniqueParticipants: 0,
+      adminParticipants: 0,
+      memberParticipants: 0,
+      recruitParticipants: 0,
+      totalWeightedReservations: 0
+    },
+    shifts: [],
+    myReservations: [],
+    focals: [],
+    canManage: false,
+    admin: { manageableUsers: [], report: [] }
+  };
 }

@@ -2,12 +2,13 @@ import {
   BirthdayModuleCard,
   BloodDriveIcon,
   ModuleCard,
-  PresentationModuleCard
+  PresentationModuleCard,
+  QueteModuleCard
 } from '../components/common';
 import AdminBirthdayPanel from '../features/birthdays/AdminBirthdayPanel';
 import TelegramSettingsPanel from '../features/settings/TelegramSettingsPanel';
 import AdminUsersPanel from '../features/users/AdminUsersPanel';
-import { hasModuleAccess } from '../lib/state';
+import { hasModuleAccess, pages } from '../lib/state';
 
 function AdminSummary({ summary }) {
   return (
@@ -22,6 +23,7 @@ function AdminSummary({ summary }) {
           <article className="stat-card"><span>New recruits</span><strong>{summary.totalNewRecruits}</strong></article>
           <article className="stat-card"><span>Total birthdays</span><strong>{summary.totalBirthdays}</strong></article>
           <article className="stat-card"><span>Blood donor records</span><strong>{summary.totalBloodDonors}</strong></article>
+          <article className="stat-card"><span>Quete shifts</span><strong>{summary.totalQueteShifts}</strong></article>
         </div>
       </section>
     </>
@@ -30,9 +32,11 @@ function AdminSummary({ summary }) {
 
 export default function HomePage(props) {
   const {
+    page,
     me,
     memberBirthday,
     presentationData,
+    queteData,
     birthdays,
     users,
     settings,
@@ -50,16 +54,89 @@ export default function HomePage(props) {
     onOpenBirthdayOverlay,
     onOpenBloodDrive,
     onOpenRecruitment,
-    onOpenPresentations
+    onOpenPresentations,
+    onOpenQuete,
+    onOpenAdminBirthdays,
+    onOpenAdminUsers,
+    onOpenAdminSettings,
+    onBackToAdminHome
   } = props;
 
   const isAdmin = me.user.role === 'admin';
   const canAccessBloodDrive = hasModuleAccess(me.user, 'bloodDrive');
   const canAccessRecruitment = hasModuleAccess(me.user, 'recruitment');
   const canAccessPresentations = hasModuleAccess(me.user, 'presentations');
+  const canAccessQuete = hasModuleAccess(me.user, 'quete');
+
+  if (isAdmin && page === pages.adminBirthdays) {
+    return (
+      <div className="page-shell">
+        <div className="page-header">
+          <div>
+            <div className="panel-kicker">Admin</div>
+            <h2>Birthday Records</h2>
+            <p>Create, update, and remove birthday records without loading the rest of the admin tools on the same page.</p>
+          </div>
+          <button type="button" className="secondary" onClick={onBackToAdminHome}>Back to Admin Hub</button>
+        </div>
+        <AdminBirthdayPanel
+          birthdays={birthdays}
+          users={users}
+          draft={newBirthday}
+          setDraft={setNewBirthday}
+          onCreate={onCreateBirthday}
+          onSave={onUpdateBirthday}
+          onDelete={onDeleteBirthday}
+        />
+      </div>
+    );
+  }
+
+  if (isAdmin && page === pages.adminUsers) {
+    return (
+      <div className="page-shell">
+        <div className="page-header">
+          <div>
+            <div className="panel-kicker">Admin</div>
+            <h2>Users & Roles</h2>
+            <p>Create accounts, control module access, and update Quete focal permissions from one dedicated page.</p>
+          </div>
+          <button type="button" className="secondary" onClick={onBackToAdminHome}>Back to Admin Hub</button>
+        </div>
+        <AdminUsersPanel
+          users={users}
+          draft={newUser}
+          setDraft={setNewUser}
+          onCreate={onCreateUser}
+          onSave={onUpdateUser}
+        />
+      </div>
+    );
+  }
+
+  if (isAdmin && page === pages.adminSettings) {
+    return (
+      <div className="page-shell">
+        <div className="page-header">
+          <div>
+            <div className="panel-kicker">Admin</div>
+            <h2>Telegram Settings</h2>
+            <p>Adjust notification delivery settings on a separate page instead of keeping them open in the dashboard.</p>
+          </div>
+          <button type="button" className="secondary" onClick={onBackToAdminHome}>Back to Admin Hub</button>
+        </div>
+        <TelegramSettingsPanel
+          settings={settings}
+          setSettings={setSettings}
+          onSave={onSaveSettings}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
-      <section className={`module-grid ${isAdmin ? '' : 'member-home-grid'}`.trim()}>
+      <section className={`module-grid ${isAdmin ? 'admin-home-grid' : 'member-home-grid'}`.trim()}>
         {!isAdmin ? (
           <BirthdayModuleCard
             memberName={me.user.displayName || me.user.username}
@@ -90,32 +167,46 @@ export default function HomePage(props) {
             onOpen={onOpenPresentations}
           />
         ) : null}
+        {canAccessQuete ? (
+          <QueteModuleCard
+            shifts={queteData.shifts}
+            myReservations={queteData.myReservations}
+            onOpen={onOpenQuete}
+          />
+        ) : null}
       </section>
 
       {isAdmin ? (
         <>
           <AdminSummary summary={me.summary} />
-          <AdminBirthdayPanel
-            birthdays={birthdays}
-            users={users}
-            draft={newBirthday}
-            setDraft={setNewBirthday}
-            onCreate={onCreateBirthday}
-            onSave={onUpdateBirthday}
-            onDelete={onDeleteBirthday}
-          />
-          <AdminUsersPanel
-            users={users}
-            draft={newUser}
-            setDraft={setNewUser}
-            onCreate={onCreateUser}
-            onSave={onUpdateUser}
-          />
-          <TelegramSettingsPanel
-            settings={settings}
-            setSettings={setSettings}
-            onSave={onSaveSettings}
-          />
+          <section className="panel">
+            <div className="section-head">
+              <div>
+                <h2>Admin Tools</h2>
+                <p>Open each admin area the same way you open other modules, then handle the detailed work inside that page.</p>
+              </div>
+            </div>
+            <div className="module-grid blood-drive-module-grid admin-tools-module-grid">
+              <ModuleCard
+                title="Birthdays"
+                description="Manage birthday records, activation state, and member birthday data on a dedicated page."
+                icon={<div className="module-icon-text">🎂</div>}
+                onClick={onOpenAdminBirthdays}
+              />
+              <ModuleCard
+                title="Users & Roles"
+                description="Create users, control access, and update internal permissions including Quete-related roles."
+                icon={<div className="module-icon-text">👥</div>}
+                onClick={onOpenAdminUsers}
+              />
+              <ModuleCard
+                title="Telegram Settings"
+                description="Configure delivery settings and operational notification behavior from its own admin page."
+                icon={<div className="module-icon-text">✉</div>}
+                onClick={onOpenAdminSettings}
+              />
+            </div>
+          </section>
         </>
       ) : null}
     </>

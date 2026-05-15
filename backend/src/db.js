@@ -16,6 +16,8 @@ const REQUIRED_COLLECTIONS = [
   'blood_donors',
   'donation_locations',
   'recruitment_interest_leads',
+  'quete_shifts',
+  'quete_reservations',
   'presentation_topics',
   'presentation_slots',
   'presentation_bookings',
@@ -49,6 +51,14 @@ function donationLocationsCollection() {
 
 function recruitmentInterestLeadsCollection() {
   return getDb().collection('recruitment_interest_leads');
+}
+
+function queteShiftsCollection() {
+  return getDb().collection('quete_shifts');
+}
+
+function queteReservationsCollection() {
+  return getDb().collection('quete_reservations');
 }
 
 function presentationTopicsCollection() {
@@ -121,6 +131,12 @@ async function ensureIndexes() {
     recruitmentInterestLeadsCollection().createIndex({ normalizedPhoneNumber: 1 }),
     recruitmentInterestLeadsCollection().createIndex({ normalizedFullName: 1, dateOfBirth: 1 }),
     recruitmentInterestLeadsCollection().createIndex({ callStatus: 1, createdAt: -1 }),
+    queteShiftsCollection().createIndex({ startAt: 1 }),
+    queteShiftsCollection().createIndex({ dateKey: 1, shiftType: 1, startAt: 1 }, { unique: true }),
+    queteShiftsCollection().createIndex({ isActive: 1, startAt: 1 }),
+    queteReservationsCollection().createIndex({ shiftId: 1, userId: 1 }, { unique: true }),
+    queteReservationsCollection().createIndex({ shiftId: 1, createdAt: 1 }),
+    queteReservationsCollection().createIndex({ userId: 1, createdAt: -1 }),
     presentationTopicsCollection().createIndex({ isAssigned: 1, createdAt: 1 }),
     presentationTopicsCollection().createIndex({ assignedTo: 1 }),
     presentationSlotsCollection().createIndex({ startAt: 1 }, { unique: true }),
@@ -244,6 +260,8 @@ module.exports = {
   getDb,
   normalizeName,
   now,
+  queteReservationsCollection,
+  queteShiftsCollection,
   recruitmentInterestLeadsCollection,
   presentationBookingsCollection,
   presentationCriteriaCollection,

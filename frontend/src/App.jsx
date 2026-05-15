@@ -5,6 +5,7 @@ import {
   downloadFile,
   emptyBloodDriveForm,
   emptyDonationLocation,
+  emptyQueteFocalDraft,
   emptyRecruitmentInterestForm,
   emptyPresentationCriterion,
   emptyPresentationScoreForm,
@@ -19,6 +20,8 @@ import {
   createDefaultSettings,
   createEmptyBirthday,
   createEmptyDonorStats,
+  createEmptyQueteData,
+  createEmptyQueteShift,
   createEmptyPresentationData,
   createEmptyPresentationReport,
   createEmptyUser,
@@ -39,6 +42,7 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const BloodDriveRouter = lazy(() => import('./pages/BloodDriveRouter'));
 const RecruitmentRouter = lazy(() => import('./pages/RecruitmentRouter'));
 const PresentationRouter = lazy(() => import('./pages/PresentationRouter'));
+const QueteRouter = lazy(() => import('./pages/QueteRouter'));
 
 export default function App() {
   const bloodDriveRefreshMs = 20000;
@@ -85,6 +89,10 @@ export default function App() {
   const [donationLocations, setDonationLocations] = useState([]);
   const [presentationData, setPresentationData] = useState(() => createEmptyPresentationData(getCurrentYear()));
   const [presentationReport, setPresentationReport] = useState(createEmptyPresentationReport);
+  const [queteData, setQueteData] = useState(createEmptyQueteData);
+  const [queteShiftDraft, setQueteShiftDraft] = useState(createEmptyQueteShift);
+  const [queteAssignmentDraft, setQueteAssignmentDraft] = useState({});
+  const [queteFocalDraft, setQueteFocalDraft] = useState(emptyQueteFocalDraft);
   const [presentationYear, setPresentationYear] = useState(getCurrentYear());
   const [presentationTopicDraft, setPresentationTopicDraft] = useState(emptyPresentationTopic);
   const [presentationSlotDraft, setPresentationSlotDraft] = useState(emptyPresentationSlot);
@@ -94,6 +102,7 @@ export default function App() {
   const [presentationSpinning, setPresentationSpinning] = useState(false);
 
   const showNotice = (message) => {
+    setError('');
     setNotice(message);
     window.clearTimeout(showNotice.timeoutId);
     showNotice.timeoutId = window.setTimeout(() => setNotice(''), 2800);
@@ -136,10 +145,19 @@ export default function App() {
     pages.recruitmentCallCenter
   ].includes(page);
   const isPresentationPage = page === pages.presentations;
+  const isQuetePage = [
+    pages.quete,
+    pages.queteBoard,
+    pages.queteMembers,
+    pages.queteShiftSetup,
+    pages.queteReport,
+    pages.queteFocals
+  ].includes(page);
   const publicRecruitmentFormUrl = 'https://youth.lrcy-jbeil.online/#/recruitment-interest';
   const canAccessBloodDrive = hasModuleAccess(me?.user, 'bloodDrive');
   const canAccessRecruitment = hasModuleAccess(me?.user, 'recruitment');
   const canAccessPresentations = hasModuleAccess(me?.user, 'presentations');
+  const canAccessQuete = hasModuleAccess(me?.user, 'quete');
 
   const loadData = async () => {
     setLoading(true);
@@ -157,6 +175,10 @@ export default function App() {
 
       if (canLoadPresentations && isRecruit) {
         requestEntries.push(['presentation', api(buildPresentationQuery('/api/presentations/dashboard'), { token })]);
+      }
+
+      if (hasModuleAccess(mePayload.user, 'quete')) {
+        requestEntries.push(['quete', api('/api/quete/dashboard', { token })]);
       }
 
       if (isAdmin) {
@@ -180,6 +202,10 @@ export default function App() {
       setEligibleDonors([]);
       setAllDonors([]);
       setPresentationData(payloads.presentation || createEmptyPresentationData(presentationYear));
+      setQueteData(payloads.quete || createEmptyQueteData());
+      setQueteShiftDraft(createEmptyQueteShift());
+      setQueteAssignmentDraft({});
+      setQueteFocalDraft(emptyQueteFocalDraft);
       setMemberBirthdayDraft(payloads.birthdays?.[0]?.birthdate || '');
       setNewBirthday((current) => ({
         ...current,
@@ -200,7 +226,8 @@ export default function App() {
       if (isAdmin) {
         setUsers(payloads.users || []);
         setSettings({
-          defaultChatId: payloads.settings?.defaultChatId || '',
+          membersGroupChatId: payloads.settings?.membersGroupChatId || '',
+          newRecruitsGroupChatId: payloads.settings?.newRecruitsGroupChatId || '',
           timezone: payloads.settings?.timezone || 'Asia/Beirut',
           hasBotToken: Boolean(payloads.settings?.hasBotToken)
         });
@@ -298,6 +325,12 @@ export default function App() {
     return payload;
   };
 
+  const refreshQuete = async () => {
+    const payload = await api('/api/quete/dashboard', { token });
+    setQueteData(payload);
+    return payload;
+  };
+
   const refreshBloodDrive = async ({ includeRepository = false, includeAllLocations = false } = {}) => {
     const [statsPayload, eligiblePayload, locationsPayload, repositoryPayload] = await Promise.all([
       api('/api/blood-drive/stats', { token }),
@@ -339,7 +372,12 @@ export default function App() {
       return;
     }
 
-    if ((isBloodDrivePage && !canAccessBloodDrive) || (isRecruitmentPage && !canAccessRecruitment) || (isPresentationPage && !canAccessPresentations)) {
+    if (
+      (isBloodDrivePage && !canAccessBloodDrive) ||
+      (isRecruitmentPage && !canAccessRecruitment) ||
+      (isPresentationPage && !canAccessPresentations) ||
+      (isQuetePage && !canAccessQuete)
+    ) {
       setPage(pages.home);
       return;
     }
@@ -347,7 +385,10 @@ export default function App() {
     if (isPresentationPage) {
       refreshPresentation({ refreshReport: me.user.role === 'admin' }).catch((err) => setError(err.message));
     }
-  }, [token, me, isBloodDrivePage, isRecruitmentPage, isPresentationPage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, presentationYear]);
+    if (isQuetePage && canAccessQuete) {
+      refreshQuete().catch((err) => setError(err.message));
+    }
+  }, [token, me, isBloodDrivePage, isRecruitmentPage, isPresentationPage, isQuetePage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, canAccessQuete, presentationYear]);
 
   useEffect(() => {
     if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage)) {
@@ -494,8 +535,21 @@ export default function App() {
     event.preventDefault();
     setError('');
     try {
-      const payload = await api('/api/settings', { token, method: 'PUT', body: { defaultChatId: settings.defaultChatId } });
-      setSettings((current) => ({ ...current, defaultChatId: payload.defaultChatId || '', timezone: payload.timezone || current.timezone, hasBotToken: Boolean(payload.hasBotToken) }));
+      const payload = await api('/api/settings', {
+        token,
+        method: 'PUT',
+        body: {
+          membersGroupChatId: settings.membersGroupChatId,
+          newRecruitsGroupChatId: settings.newRecruitsGroupChatId
+        }
+      });
+      setSettings((current) => ({
+        ...current,
+        membersGroupChatId: payload.membersGroupChatId || '',
+        newRecruitsGroupChatId: payload.newRecruitsGroupChatId || '',
+        timezone: payload.timezone || current.timezone,
+        hasBotToken: Boolean(payload.hasBotToken)
+      }));
       showNotice('Telegram settings updated successfully.');
     } catch (err) {
       setError(err.message);
@@ -741,12 +795,126 @@ export default function App() {
     setBloodDriveForm(emptyBloodDriveForm);
   };
 
+  const saveQueteShift = async (event) => {
+    event.preventDefault();
+    try {
+      if (queteShiftDraft.id) {
+        await api(`/api/quete/shifts/${queteShiftDraft.id}`, { token, method: 'PUT', body: queteShiftDraft });
+        showNotice('Quete shift updated successfully.');
+      } else {
+        await api('/api/quete/shifts', { token, method: 'POST', body: queteShiftDraft });
+        showNotice('Quete shift created successfully.');
+      }
+      setQueteShiftDraft(createEmptyQueteShift());
+      await refreshQuete();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const reserveQueteShift = async (shiftId) => {
+    try {
+      const payload = await api(`/api/quete/shifts/${shiftId}/reserve`, { token, method: 'POST', body: {} });
+      setQueteData(payload);
+      showNotice('Quete seat reserved successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const cancelOwnQueteReservation = async (shiftId) => {
+    try {
+      const payload = await api(`/api/quete/shifts/${shiftId}/reservations/me`, { token, method: 'DELETE' });
+      setQueteData(payload);
+      showNotice('Quete reservation cancelled successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const assignUserToQueteShift = async (shiftId) => {
+    const userId = queteAssignmentDraft[shiftId]?.userId;
+    if (!userId) {
+      return;
+    }
+
+    try {
+      const payload = await api(`/api/quete/shifts/${shiftId}/reservations/manage`, {
+        token,
+        method: 'POST',
+        body: { userId }
+      });
+      setQueteAssignmentDraft((current) => ({ ...current, [shiftId]: { userId: '', query: '' } }));
+      setQueteData(payload);
+      showNotice('User added to quete shift successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const removeQueteReservation = async (shiftId, reservationId) => {
+    try {
+      const payload = await api(`/api/quete/shifts/${shiftId}/reservations/${reservationId}`, {
+        token,
+        method: 'DELETE'
+      });
+      setQueteData(payload);
+      showNotice('Reservation removed successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const addQueteFocal = async () => {
+    const userId = queteFocalDraft.userId;
+    if (!userId) return;
+
+    try {
+      await api(`/api/users/${userId}`, {
+        token,
+        method: 'PUT',
+        body: { isQueteFocal: true }
+      });
+      setQueteFocalDraft(emptyQueteFocalDraft);
+      await Promise.all([refreshUsers(), refreshQuete()]);
+      showNotice('Quete focal added successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const removeQueteFocal = async (userId) => {
+    try {
+      await api(`/api/users/${userId}`, {
+        token,
+        method: 'PUT',
+        body: { isQueteFocal: false }
+      });
+      await Promise.all([refreshUsers(), refreshQuete()]);
+      showNotice('Quete focal removed successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const exportQueteReport = async () => {
+    try {
+      await downloadFile('/api/quete/report/export', {
+        token,
+        filename: 'quete-report.xlsx'
+      });
+      showNotice('Quete report downloaded successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   useEffect(() => {
-    if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage)) {
+    if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage && !isQuetePage)) {
       return undefined;
     }
 
-    if ((isBloodDrivePage && !canAccessBloodDrive) || (isRecruitmentPage && !canAccessRecruitment)) {
+    if ((isBloodDrivePage && !canAccessBloodDrive) || (isRecruitmentPage && !canAccessRecruitment) || (isQuetePage && !canAccessQuete)) {
       return undefined;
     }
 
@@ -791,6 +959,11 @@ export default function App() {
 
         if (isRecruitmentPage && canAccessRecruitment) {
           await refreshRecruitmentLeads();
+          return;
+        }
+
+        if (isQuetePage && canAccessQuete) {
+          await refreshQuete();
         }
       } catch (err) {
         setError(err.message);
@@ -798,7 +971,7 @@ export default function App() {
     }, bloodDriveRefreshMs);
 
     return () => window.clearInterval(intervalId);
-  }, [token, me, isBloodDrivePage, isRecruitmentPage, page, donorFilters, repositoryFilters, recruitmentFilters, canAccessBloodDrive, canAccessRecruitment]);
+  }, [token, me, isBloodDrivePage, isRecruitmentPage, isQuetePage, page, donorFilters, repositoryFilters, recruitmentFilters, canAccessBloodDrive, canAccessRecruitment, canAccessQuete]);
 
   useEffect(() => {
     if (!token || !bloodDriveOverlayOpen || selectedCollectionDonor) {
@@ -1157,11 +1330,40 @@ export default function App() {
       );
     }
 
+    if (isQuetePage && canAccessQuete) {
+      return (
+        <QueteRouter
+          page={page}
+          me={me}
+          data={queteData}
+          canManage={queteData.canManage}
+          draft={queteShiftDraft}
+          setDraft={setQueteShiftDraft}
+          focalDraft={queteFocalDraft}
+          setFocalDraft={setQueteFocalDraft}
+          assignmentDraft={queteAssignmentDraft}
+          onAssignmentChange={(shiftId, value) => setQueteAssignmentDraft((current) => ({ ...current, [shiftId]: value }))}
+          onSaveShift={saveQueteShift}
+          onNavigate={setPage}
+          onReserve={reserveQueteShift}
+          onAssignUser={assignUserToQueteShift}
+          onRemoveReservation={removeQueteReservation}
+          onAddFocal={addQueteFocal}
+          onRemoveFocal={removeQueteFocal}
+          onExportReport={exportQueteReport}
+          onBack={() => setPage(pages.home)}
+          onResetShiftDraft={() => setQueteShiftDraft(createEmptyQueteShift())}
+        />
+      );
+    }
+
     return (
       <HomePage
+        page={page}
         me={me}
         memberBirthday={memberBirthday}
         presentationData={presentationData}
+        queteData={queteData}
         donorStats={donorStats}
         birthdays={birthdays}
         users={users}
@@ -1181,6 +1383,11 @@ export default function App() {
         onOpenBloodDrive={() => setPage(pages.bloodDrive)}
         onOpenRecruitment={() => setPage(pages.recruitment)}
         onOpenPresentations={() => setPage(pages.presentations)}
+        onOpenQuete={() => setPage(pages.quete)}
+        onOpenAdminBirthdays={() => setPage(pages.adminBirthdays)}
+        onOpenAdminUsers={() => setPage(pages.adminUsers)}
+        onOpenAdminSettings={() => setPage(pages.adminSettings)}
+        onBackToAdminHome={() => setPage(pages.home)}
       />
     );
   };

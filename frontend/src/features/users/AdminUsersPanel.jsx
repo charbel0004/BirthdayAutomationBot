@@ -16,6 +16,10 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
   };
 
   const toggleModuleAccess = (key, checked) => {
+    if (key === 'quete') {
+      return;
+    }
+
     setDraft((current) => ({
       ...current,
       moduleAccess: {
@@ -143,13 +147,19 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
                     <label key={key} className="switch-row">
                       <div>
                         <strong>{moduleAccessLabels[key]}</strong>
-                        <span>{draft.role === 'admin' ? 'Always enabled for admin accounts.' : `Allow access to ${moduleAccessLabels[key]}.`}</span>
+                        <span>
+                          {key === 'quete'
+                            ? 'Mandatory for every account.'
+                            : draft.role === 'admin'
+                              ? 'Always enabled for admin accounts.'
+                              : `Allow access to ${moduleAccessLabels[key]}.`}
+                        </span>
                       </div>
                       <span className="switch-toggle">
                         <input
                           type="checkbox"
                           checked={draft.role === 'admin' ? true : Boolean(draft.moduleAccess?.[key])}
-                          disabled={draft.role === 'admin'}
+                          disabled={draft.role === 'admin' || key === 'quete'}
                           onChange={(event) => toggleModuleAccess(key, event.target.checked)}
                         />
                         <span className="switch-slider" />
@@ -158,6 +168,20 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
                   ))}
                 </div>
               </div>
+              <label className="switch-row">
+                <div>
+                  <strong>Quete focal</strong>
+                  <span>Allow this user to add or remove people from Quete shifts.</span>
+                </div>
+                <span className="switch-toggle">
+                  <input
+                    type="checkbox"
+                    checked={draft.isQueteFocal === true}
+                    onChange={(event) => setDraft({ ...draft, isQueteFocal: event.target.checked })}
+                  />
+                  <span className="switch-slider" />
+                </span>
+              </label>
               <label className="switch-row">
                 <div>
                   <strong>Active account</strong>
