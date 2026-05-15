@@ -66,6 +66,21 @@ const QUETE_SHIFT_CATEGORIES = {
   churchMass: 0.5
 };
 
+function normalizeQueteShiftCategory(value) {
+  const normalized = String(value || '').trim();
+  const lowered = normalized.toLowerCase();
+
+  if (lowered === 'churchmass' || lowered === 'church_mass' || lowered === 'church-mass') {
+    return 'churchMass';
+  }
+
+  if (lowered === 'road' || lowered === 'restaurant' || lowered === 'church') {
+    return lowered;
+  }
+
+  return normalized;
+}
+
 function isValidBirthdate(value) {
   return /^\d{2}-\d{2}$/.test(value);
 }
@@ -2187,7 +2202,7 @@ app.post('/api/quete/shifts', requireQueteAccess, async (req, res) => {
 
   const { title, shiftType, shiftCategory = 'road', date, startAt, endAt, bookingOpensOn, bookingClosesOn, capacity, location = '', notes = '' } = req.body || {};
   const nextShiftType = String(shiftType || '').trim().toLowerCase();
-  const nextShiftCategory = String(shiftCategory || '').trim().toLowerCase();
+  const nextShiftCategory = normalizeQueteShiftCategory(shiftCategory || 'road');
   const nextCapacity = Number(capacity);
   const nextStartAt = combineDateAndTime(date, startAt);
   const nextEndAt = endAt ? combineDateAndTime(date, endAt) : null;
@@ -2197,7 +2212,7 @@ app.post('/api/quete/shifts', requireQueteAccess, async (req, res) => {
   }
 
   if (!Object.prototype.hasOwnProperty.call(QUETE_SHIFT_CATEGORIES, nextShiftCategory)) {
-    return res.status(400).json({ error: 'Shift category must be road or restaurant.' });
+    return res.status(400).json({ error: 'Shift category must be road, restaurant, church, or church mass.' });
   }
 
   if (Number.isNaN(nextStartAt.getTime())) {
@@ -2298,9 +2313,11 @@ app.put('/api/quete/shifts/:id', requireQueteAccess, async (req, res) => {
   }
   updates.shiftType = nextShiftType;
 
-  const nextShiftCategory = shiftCategory !== undefined ? String(shiftCategory || '').trim().toLowerCase() : (shift.shiftCategory || 'road');
+  const nextShiftCategory = shiftCategory !== undefined
+    ? normalizeQueteShiftCategory(shiftCategory)
+    : (shift.shiftCategory || 'road');
   if (!Object.prototype.hasOwnProperty.call(QUETE_SHIFT_CATEGORIES, nextShiftCategory)) {
-    return res.status(400).json({ error: 'Shift category must be road or restaurant.' });
+    return res.status(400).json({ error: 'Shift category must be road, restaurant, church, or church mass.' });
   }
   updates.shiftCategory = nextShiftCategory;
 
