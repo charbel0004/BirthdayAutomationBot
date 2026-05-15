@@ -488,14 +488,9 @@ function sanitizeQueteShift(shift, reservations = [], usersMap = new Map(), opti
 
 function sortQueteShiftsByAvailability(shifts = []) {
   return [...shifts].sort((left, right) => {
-    const leftRank = left.isActive !== false && left.isReservationOpen && left.availableSeats > 0 ? 0 : 1;
-    const rightRank = right.isActive !== false && right.isReservationOpen && right.availableSeats > 0 ? 0 : 1;
-
-    if (leftRank !== rightRank) {
-      return leftRank - rightRank;
-    }
-
-    return new Date(left.startAt).getTime() - new Date(right.startAt).getTime();
+    const leftTime = new Date(left.startAt).getTime();
+    const rightTime = new Date(right.startAt).getTime();
+    return rightTime - leftTime;
   });
 }
 
@@ -818,6 +813,7 @@ async function buildQueteDashboard(account) {
         (shift) =>
           shift.isActive !== false &&
           !myReservations.some((reservation) => reservation.shift.id === shift.id) &&
+          shift.availableSeats > 0 &&
           (!shift.bookingOpensOn || shift.bookingOpensOn <= today) &&
           (!shift.bookingClosesOn || shift.bookingClosesOn >= today)
       );
