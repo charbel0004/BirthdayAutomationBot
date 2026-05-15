@@ -8,6 +8,7 @@ import {
 import AdminBirthdayPanel from '../features/birthdays/AdminBirthdayPanel';
 import TelegramSettingsPanel from '../features/settings/TelegramSettingsPanel';
 import AdminUsersPanel from '../features/users/AdminUsersPanel';
+import { formatDateOnlyLabel, formatTimeOnlyLabel } from '../lib/app';
 import { hasModuleAccess, pages } from '../lib/state';
 
 function AdminSummary({ summary }) {
@@ -175,6 +176,33 @@ export default function HomePage(props) {
           />
         ) : null}
       </section>
+
+      {!isAdmin && canAccessQuete && queteData.myReservations.length ? (
+        <section className="panel">
+          <div className="section-head">
+            <div>
+              <h2>My Quete Shifts</h2>
+              <p>Your reserved Quete shifts are shown here so you do not need to open the Quete page first.</p>
+            </div>
+          </div>
+          <div className="repository-card-list quete-reservation-list" style={{ display: 'grid' }}>
+            {queteData.myReservations.map((item) => (
+              <article key={item.reservationId} className="repository-card">
+                <div className="repository-card-head">
+                  <div>
+                    <h3>{item.shift.title}</h3>
+                    <p>
+                      {formatDateOnlyLabel(item.shift.startAt)} • {formatTimeOnlyLabel(item.shift.startAt)}
+                      {item.shift.endAt ? ` to ${formatTimeOnlyLabel(item.shift.endAt)}` : ''}
+                    </p>
+                  </div>
+                  <span className="repository-badge">Reserved</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {isAdmin ? (
         <>

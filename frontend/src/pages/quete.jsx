@@ -49,7 +49,6 @@ function buildShiftDraftFromShift(shift) {
 function filterShiftsByDateAndLocation(shifts = [], filters = {}) {
   const normalizedDate = String(filters.date || '').trim();
   const normalizedLocation = String(filters.location || '').trim().toLowerCase();
-  const now = Date.now();
 
   return shifts
     .filter((shift) => {
@@ -57,22 +56,7 @@ function filterShiftsByDateAndLocation(shifts = [], filters = {}) {
       const matchesLocation = !normalizedLocation || String(shift.location || '').toLowerCase().includes(normalizedLocation);
       return matchesDate && matchesLocation;
     })
-    .sort((left, right) => {
-      const leftTime = new Date(left.startAt).getTime();
-      const rightTime = new Date(right.startAt).getTime();
-      const leftIsUpcoming = leftTime >= now;
-      const rightIsUpcoming = rightTime >= now;
-
-      if (leftIsUpcoming !== rightIsUpcoming) {
-        return leftIsUpcoming ? -1 : 1;
-      }
-
-      if (leftIsUpcoming && rightIsUpcoming) {
-        return leftTime - rightTime;
-      }
-
-      return rightTime - leftTime;
-    });
+    .sort((left, right) => new Date(right.startAt).getTime() - new Date(left.startAt).getTime());
 }
 
 function ShiftCard({
@@ -130,6 +114,27 @@ function ShiftCard({
           ) : (
             <div className="repository-badge">{shift.availableSeats} seat{shift.availableSeats === 1 ? '' : 's'} left</div>
           )}
+          {!showMemberManager ? (
+            <button
+              type="button"
+              className="secondary quete-quick-action"
+              disabled={isReserveDisabled}
+              onClick={(event) => {
+                event.stopPropagation();
+                onReserve(shift.id);
+              }}
+            >
+              {isReservedByCurrentUser
+                ? 'Reserved'
+                : isReservationUpcoming
+                  ? 'Opens Soon'
+                  : isReservationClosed
+                    ? 'Closed'
+                    : isFullForNewUser
+                      ? 'Full'
+                      : 'Reserve My Seat'}
+            </button>
+          ) : null}
         </div>
       </div>
       {isOpen ? (
@@ -271,6 +276,24 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
     }))),
     [data.admin]
   );
+  const memberShiftDistributionItems = useMemo(() => {
+    const memberEntries = (data.admin?.report || []).filter((entry) => entry.user.role === 'member');
+    return [
+      { label: 'Road', value: memberEntries.reduce((sum, entry) => sum + Number(entry.roadShifts || 0), 0) },
+      { label: 'Restaurant', value: memberEntries.reduce((sum, entry) => sum + Number(entry.restaurantShifts || 0), 0) },
+      { label: 'Church', value: memberEntries.reduce((sum, entry) => sum + Number(entry.churchShifts || 0), 0) },
+      { label: 'Church Mass', value: memberEntries.reduce((sum, entry) => sum + Number(entry.churchMassShifts || 0), 0) }
+    ];
+  }, [data.admin]);
+  const recruitShiftDistributionItems = useMemo(() => {
+    const recruitEntries = (data.admin?.report || []).filter((entry) => entry.user.role === 'new recruit');
+    return [
+      { label: 'Road', value: recruitEntries.reduce((sum, entry) => sum + Number(entry.roadShifts || 0), 0) },
+      { label: 'Restaurant', value: recruitEntries.reduce((sum, entry) => sum + Number(entry.restaurantShifts || 0), 0) },
+      { label: 'Church', value: recruitEntries.reduce((sum, entry) => sum + Number(entry.churchShifts || 0), 0) },
+      { label: 'Church Mass', value: recruitEntries.reduce((sum, entry) => sum + Number(entry.churchMassShifts || 0), 0) }
+    ];
+  }, [data.admin]);
 
   return (
     <div className="page-shell quete-page">
@@ -315,6 +338,14 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
             <MetricBarChart
               title="Top Participation"
               items={topParticipantItems.length ? topParticipantItems : [{ label: 'No data', value: 0 }]}
+            />
+            <MetricBarChart
+              title="Member Shift Distribution"
+              items={memberShiftDistributionItems}
+            />
+            <MetricBarChart
+              title="New Recruit Shift Distribution"
+              items={recruitShiftDistributionItems}
             />
           </div>
         </section>

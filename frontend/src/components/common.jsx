@@ -198,21 +198,21 @@ export function LoginPage({ onLogin }) {
           <div className="hero-badge">Lebanese Red Cross</div>
           <h1>Red Cross Youth Sector Hub</h1>
           <p className="hero-copy">
-            A professional workspace for youth sector operations, presentation coordination,
-            blood drive records, and internal member tools.
+            A central workspace for birthdays, blood drive operations, recruitment follow-up,
+            presentations, Quete management, and role-based internal access.
           </p>
           <div className="feature-list">
             <article>
               <strong>Structured access</strong>
-              <span>Admins, members, and new recruits use the same secure workspace with separate experiences.</span>
+              <span>Admins, members, and new recruits use the same secure system with permissions matched to their role.</span>
             </article>
             <article>
-              <strong>Presentation control</strong>
-              <span>Manage topic assignment, time slots, scoring, and reporting in one central system.</span>
+              <strong>Operations in one place</strong>
+              <span>Manage blood drive records, recruitment work, presentation scheduling, and Quete shifts from one hub.</span>
             </article>
             <article>
-              <strong>Existing automation preserved</strong>
-              <span>Birthday messaging and Telegram settings continue to use the current backend setup.</span>
+              <strong>Birthday automation</strong>
+              <span>Birthday records and Telegram delivery stay connected so messages can be routed to the correct member groups.</span>
             </article>
           </div>
         </section>
@@ -226,7 +226,7 @@ export function LoginPage({ onLogin }) {
           {mode === 'login' ? (
             <>
               <h2>Sign in to Hub</h2>
-              <p>Use your assigned username and password to access the workspace.</p>
+              <p>Use your assigned username and password to access your role-specific dashboard and modules.</p>
               <form onSubmit={submitLogin} className="grid-form">
                 <label>
                   Username
@@ -245,7 +245,7 @@ export function LoginPage({ onLogin }) {
           ) : (
             <>
               <h2>Create your account</h2>
-              <p>Register yourself as a member or new recruit and save your birthday during signup.</p>
+              <p>Register as a member or new recruit, save your birthday, and get access to the required modules automatically.</p>
               <form onSubmit={submitSignup} className="grid-form">
                 <label>
                   Full name
