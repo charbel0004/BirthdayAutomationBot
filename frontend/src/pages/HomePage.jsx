@@ -182,7 +182,10 @@ export default function HomePage(props) {
           <div className="section-head">
             <div>
               <h2>My Quete Shifts</h2>
-              <p>Your reserved Quete shifts are shown here so you do not need to open the Quete page first.</p>
+              <p>
+                You have taken {queteData.myParticipation?.reservationsCount || 0} shift
+                {(queteData.myParticipation?.reservationsCount || 0) === 1 ? '' : 's'} in total.
+              </p>
             </div>
           </div>
           <div className="repository-card-list quete-reservation-list" style={{ display: 'grid' }}>
