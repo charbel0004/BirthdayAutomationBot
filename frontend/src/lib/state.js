@@ -214,6 +214,14 @@ export function createEmptyQueteData() {
     },
     shifts: [],
     myReservations: [],
+    myParticipation: {
+      reservationsCount: 0,
+      roadShifts: 0,
+      restaurantShifts: 0,
+      churchShifts: 0,
+      churchMassShifts: 0,
+      weightedTotal: 0
+    },
     focals: [],
     canManage: false,
     admin: { manageableUsers: [], report: [] }

@@ -852,6 +852,16 @@ async function buildQueteDashboard(account) {
     })
     .filter((entry) => entry.reservationsCount > 0)
     .sort((a, b) => b.weightedTotal - a.weightedTotal || a.user.displayName.localeCompare(b.user.displayName));
+  const myParticipation =
+    participationReport.find((entry) => entry.user.id === String(account._id)) || {
+      user: sanitizeUser(account),
+      reservationsCount: 0,
+      roadShifts: 0,
+      restaurantShifts: 0,
+      churchShifts: 0,
+      churchMassShifts: 0,
+      weightedTotal: 0
+    };
   const totalWeightedReservations = participationReport.reduce((sum, entry) => sum + entry.weightedTotal, 0);
   const totalCapacity = shiftPayload.reduce((sum, shift) => sum + Number(shift.capacity || 0), 0);
   const filledSeats = shiftPayload.reduce((sum, shift) => sum + Number(shift.reservedCount || 0), 0);
@@ -880,6 +890,7 @@ async function buildQueteDashboard(account) {
     },
     shifts: sortedVisibleShiftPayload,
     myReservations,
+    myParticipation,
     focals,
     canManage,
     admin: canManage
@@ -2198,7 +2209,7 @@ app.get('/api/quete/report/export', requireRole('admin'), requireQueteAccess, as
       'Restaurant shifts': entry.restaurantShifts,
       'Church shifts': entry.churchShifts,
       'Church masses': entry.churchMassShifts,
-      Reservations: entry.reservationsCount,
+      'Total shifts taken': entry.reservationsCount,
       'Weighted total': entry.weightedTotal
     }));
 

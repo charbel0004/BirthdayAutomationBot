@@ -254,6 +254,7 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
   const [openShiftId, setOpenShiftId] = useState('');
   const [filters, setFilters] = useState({ date: '', location: '' });
   const myShiftIds = new Set((data.myReservations || []).map((item) => item.shift.id));
+  const myParticipation = data.myParticipation || {};
   const filteredShifts = useMemo(
     () => filterShiftsByDateAndLocation(data.shifts || [], filters),
     [data.shifts, filters]
@@ -305,6 +306,17 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
         </div>
         <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
       </div>
+      <section className="panel">
+        <div className="section-head">
+          <div>
+            <h2>My Quete total</h2>
+            <p>Your running Quete participation count across all reserved shifts.</p>
+          </div>
+        </div>
+        <div className="stats-row quete-stats-row">
+          <article className="stat-card"><span>Total shifts taken</span><strong>{myParticipation.reservationsCount || 0}</strong></article>
+        </div>
+      </section>
       {showInsights ? (
         <section className="panel">
           <div className="section-head">
@@ -495,6 +507,17 @@ function QueteManagerLandingPage({ isAdmin, data, onNavigate, onBack }) {
           />
         ) : null}
       </section>
+      <section className="panel">
+        <div className="section-head">
+          <div>
+            <h2>My Quete total</h2>
+            <p>Your running Quete participation count across all reserved shifts.</p>
+          </div>
+        </div>
+        <div className="stats-row quete-stats-row">
+          <article className="stat-card"><span>Total shifts taken</span><strong>{data.myParticipation?.reservationsCount || 0}</strong></article>
+        </div>
+      </section>
       {isAdmin ? (
         <section className="panel">
           <div className="section-head">
@@ -672,7 +695,7 @@ function QueteReportPanel({ data, onExportReport }) {
               <th>Restaurant shifts</th>
               <th>Church shifts</th>
               <th>Church masses</th>
-              <th>Reservations</th>
+              <th>Total shifts taken</th>
               <th>Weighted total</th>
             </tr>
           </thead>
