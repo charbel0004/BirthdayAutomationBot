@@ -518,6 +518,32 @@ function QueteManagerLandingPage({ isAdmin, data, onNavigate, onBack }) {
           <article className="stat-card"><span>Total shifts taken</span><strong>{data.myParticipation?.reservationsCount || 0}</strong></article>
         </div>
       </section>
+      {data.myReservations.length ? (
+        <section className="panel">
+          <div className="section-head">
+            <div>
+              <h2>My reserved shifts</h2>
+              <p>Your own Quete reservations are listed here as well.</p>
+            </div>
+          </div>
+          <div className="repository-card-list quete-reservation-list">
+            {data.myReservations.map((item) => (
+              <article key={item.reservationId} className="repository-card">
+                <div className="repository-card-head">
+                  <div>
+                    <h3>{item.shift.title}</h3>
+                    <p>
+                      {formatDateOnlyLabel(item.shift.startAt)} • {formatTimeOnlyLabel(item.shift.startAt)}
+                      {item.shift.endAt ? ` to ${formatTimeOnlyLabel(item.shift.endAt)}` : ''}
+                    </p>
+                  </div>
+                  <span className="repository-badge">Reserved</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {isAdmin ? (
         <section className="panel">
           <div className="section-head">
