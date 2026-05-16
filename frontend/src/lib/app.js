@@ -10,6 +10,15 @@ function resolveApiUrl(path) {
   return `${productionApiBaseUrl}${path}`;
 }
 
+export function normalizeUsernameInput(value) {
+  return String(value || '')
+    .replace(/\s+/g, '.')
+    .replace(/[^a-zA-Z0-9._-]+/g, '')
+    .replace(/[._-]{2,}/g, (match) => match[0])
+    .replace(/^[._-]+|[._-]+$/g, '')
+    .toLowerCase();
+}
+
 export const months = [
   { value: '01', label: 'January' },
   { value: '02', label: 'February' },
@@ -110,11 +119,19 @@ export async function api(path, { token, method = 'GET', body } = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(requestUrl, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  });
+  let response;
+
+  try {
+    response = await fetch(requestUrl, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (error) {
+    const networkError = new Error('Unable to reach the server. Please try again.');
+    networkError.cause = error;
+    throw networkError;
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));

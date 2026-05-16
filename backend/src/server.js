@@ -86,6 +86,20 @@ function isValidBirthdate(value) {
   return /^\d{2}-\d{2}$/.test(value);
 }
 
+function normalizeUsername(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, '.')
+    .replace(/[^a-zA-Z0-9._-]+/g, '')
+    .replace(/[._-]{2,}/g, (match) => match[0])
+    .replace(/^[._-]+|[._-]+$/g, '')
+    .toLowerCase();
+}
+
+function isValidUsername(value) {
+  return /^[a-z0-9](?:[a-z0-9._-]{1,28}[a-z0-9])?$/.test(String(value || ''));
+}
+
 function formatDateOnly(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
@@ -1169,11 +1183,15 @@ app.post('/api/auth/signup', async (req, res) => {
     return res.status(400).json({ error: 'Please enter a valid date of birth.' });
   }
 
-  const trimmedUsername = String(username).trim();
+  const trimmedUsername = normalizeUsername(username);
   const trimmedDisplayName = String(displayName).trim();
 
   if (!trimmedUsername || !trimmedDisplayName) {
     return res.status(400).json({ error: 'Please complete both the username and full name fields.' });
+  }
+
+  if (!isValidUsername(trimmedUsername)) {
+    return res.status(400).json({ error: 'Username must use only letters, numbers, dots, underscores, or hyphens.' });
   }
 
   const [existingUser, duplicateBirthday] = await Promise.all([

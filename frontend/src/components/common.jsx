@@ -6,7 +6,8 @@ import {
   formatDateTime,
   getDaysUntilBirthday,
   months,
-  monthMaxDays
+  monthMaxDays,
+  normalizeUsernameInput
 } from '../lib/app';
 import {
   createDefaultModuleAccess,
@@ -181,7 +182,12 @@ export function LoginPage({ onLogin }) {
     setSignupError('');
 
     try {
-      const payload = await api('/api/auth/signup', { method: 'POST', body: signupForm });
+      const signupPayload = {
+        ...signupForm,
+        displayName: String(signupForm.displayName || '').trim(),
+        username: normalizeUsernameInput(signupForm.username)
+      };
+      const payload = await api('/api/auth/signup', { method: 'POST', body: signupPayload });
       onLogin(payload.token);
     } catch (err) {
       setSignupError(err.message);
@@ -253,7 +259,7 @@ export function LoginPage({ onLogin }) {
                 </label>
                 <label>
                   Username
-                  <input value={signupForm.username} onChange={(event) => setSignupForm({ ...signupForm, username: event.target.value })} placeholder="Choose a username" required />
+                  <input value={signupForm.username} onChange={(event) => setSignupForm({ ...signupForm, username: normalizeUsernameInput(event.target.value) })} placeholder="Choose a username" required />
                 </label>
                 <label>
                   Password
