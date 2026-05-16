@@ -807,7 +807,7 @@ async function buildQueteDashboard(account) {
       shift,
       reservationsByShiftId.get(String(shift._id)) || [],
       usersMap,
-      { includeReservations: canManage }
+      { includeReservations: true }
     )
   );
   const myReservations = (reservationsByUserId.get(String(account._id)) || [])

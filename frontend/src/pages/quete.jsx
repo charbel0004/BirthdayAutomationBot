@@ -161,6 +161,35 @@ function ShiftCard({
                   : 'Reserve My Seat'}
         </button>
       </div>
+      {!showMemberManager ? (
+        <div className="table-wrap quete-table-wrap" style={{ marginTop: 16 }} onClick={(event) => event.stopPropagation()}>
+          <table>
+            <thead>
+              <tr>
+                <th>Reserved member</th>
+                <th>Role</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shift.reservations.length ? shift.reservations.map((reservation) => (
+                <tr key={reservation.id}>
+                  <td>{reservation.user?.displayName || 'Unknown user'}</td>
+                  <td>{reservation.user?.role || '—'}</td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan="2">
+                    <div className="repository-empty-state">
+                      <strong>No reservations yet.</strong>
+                      <span>This shift still has open seats.</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       {canManage && showMemberManager ? (
         <div className="table-wrap quete-table-wrap" style={{ marginTop: 16 }} onClick={(event) => event.stopPropagation()}>
           <table>
