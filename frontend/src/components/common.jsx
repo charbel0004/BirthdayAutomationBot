@@ -332,6 +332,55 @@ export function RecruitmentInterestPage({ form, onChange, onSubmit, saving, erro
   );
 }
 
+export function BloodDonorInterestPage({ form, onChange, onSubmit, saving, checkingDuplicate, error, success }) {
+  return (
+    <div className="login-shell">
+      <div className="login-backdrop" />
+      <main className="login-grid">
+        <section className="hero-panel">
+          <div className="hero-badge">Lebanese Red Cross</div>
+          <h1>Future Blood Donor Registration</h1>
+          <p className="hero-copy">
+            Complete this form if you would like to be considered for future blood donation campaigns with the Lebanese Red Cross Youth Sector, Jbeil Center. Your details will be reviewed by the blood drive team and used only for future donation follow-up.
+          </p>
+        </section>
+        <section className="login-panel">
+          <div className="panel-kicker">Blood Drive</div>
+          <h2>Register your interest</h2>
+          <p>Fill in your details and our team will contact you when future blood donation opportunities are available.</p>
+          <form onSubmit={onSubmit} className="grid-form">
+            <label>
+              First name
+              <input value={form.firstName} onChange={(event) => onChange('firstName', event.target.value)} required />
+            </label>
+            <label>
+              Last name
+              <input value={form.lastName} onChange={(event) => onChange('lastName', event.target.value)} required />
+            </label>
+            <label>
+              Phone number
+              <input value={form.phoneNumber} onChange={(event) => onChange('phoneNumber', event.target.value)} required />
+            </label>
+            <label>
+              Date of birth
+              <input type="date" value={form.dateOfBirth} onChange={(event) => onChange('dateOfBirth', event.target.value)} required />
+            </label>
+            <label>
+              Notes / comments
+              <textarea value={form.notes} onChange={(event) => onChange('notes', event.target.value)} placeholder="Optional information you would like to share with the blood drive team" />
+            </label>
+            {error ? <div className="error-banner">{error}</div> : null}
+            {success ? <div className="notice-banner">{success}</div> : null}
+            <button type="submit" disabled={saving || checkingDuplicate || Boolean(error)}>
+              {saving ? 'Submitting...' : checkingDuplicate ? 'Checking...' : 'Submit Interest'}
+            </button>
+          </form>
+        </section>
+      </main>
+    </div>
+  );
+}
+
 export function MetricBarChart({ title, items }) {
   const max = Math.max(...items.map((item) => item.value), 1);
 

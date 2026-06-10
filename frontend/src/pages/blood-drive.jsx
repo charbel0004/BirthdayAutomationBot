@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BloodDriveIcon, CallCenterRecordPanel, DonorProspectOverlay, DonorRepositoryCard, DonorRow, MetricBarChart, ModuleCard } from '../components/common';
 
-export function BloodDrivePage({ donorStats, onOpenCollection, onOpenEligibleDonors, onOpenRepository, onOpenLocations, onExportDonations, onBack, isAdmin }) {
+export function BloodDrivePage({ donorStats, publicFormUrl, onOpenCollection, onOpenEligibleDonors, onOpenRepository, onOpenLocations, onExportDonations, onBack, isAdmin }) {
   const [exportDate, setExportDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   return (
@@ -17,7 +17,7 @@ export function BloodDrivePage({ donorStats, onOpenCollection, onOpenEligibleDon
       <section className="module-grid blood-drive-module-grid">
         <ModuleCard title="Blood Drive Data Collection" description="Open the donor form and submit a blood donor record." icon={<BloodDriveIcon />} onClick={onOpenCollection} />
         <ModuleCard title="Eligible Donor Call Center" description="Open the follow-up page for eligible donors and track contact outcomes." icon={<div className="module-icon-text">A+</div>} onClick={onOpenEligibleDonors} />
-        <ModuleCard title="Donors Repository" description="Open the complete donor repository and review donor records." icon={<div className="module-icon-text">🗂</div>} onClick={onOpenRepository} />
+        <ModuleCard title="Donor Records" description="Review all donor records and manage follow-up details." icon={<div className="module-icon-text">🗂</div>} onClick={onOpenRepository} />
         {isAdmin ? <ModuleCard title="Donation Locations" description="Add locations and control which collection-day places stay active in the dropdown." icon={<div className="module-icon-text">📍</div>} onClick={onOpenLocations} /> : null}
       </section>
       <section className="panel">
@@ -26,6 +26,15 @@ export function BloodDrivePage({ donorStats, onOpenCollection, onOpenEligibleDon
           <article className="stat-card"><span>Total donor records</span><strong>{donorStats.totals.total}</strong></article>
           <article className="stat-card"><span>Eligible now</span><strong>{donorStats.totals.eligible}</strong></article>
           <article className="stat-card"><span>Upcoming donors</span><strong>{donorStats.totals.upcoming}</strong></article>
+        </div>
+        <div className="export-strip">
+          <div>
+            <h3>Public donor registration form</h3>
+            <p>Use this link in your QR code so interested participants can submit their details for future blood donation campaigns.</p>
+          </div>
+          <div className="recruitment-link-card">
+            <strong>{publicFormUrl}</strong>
+          </div>
         </div>
         <div className="chart-grid">
           <MetricBarChart title="Donations by location" items={donorStats.byLocation.length ? donorStats.byLocation : [{ label: 'No data', value: 0 }]} />

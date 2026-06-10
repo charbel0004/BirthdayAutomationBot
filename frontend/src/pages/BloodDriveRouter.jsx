@@ -8,6 +8,7 @@ import {
 export default function BloodDriveRouter({
   page,
   donorStats,
+  publicFormUrl,
   donorFilters,
   setDonorFilters,
   eligibleDonors,
@@ -88,6 +89,7 @@ export default function BloodDriveRouter({
   return (
     <BloodDrivePage
       donorStats={donorStats}
+      publicFormUrl={publicFormUrl}
       onOpenCollection={onOpenCollection}
       onOpenEligibleDonors={onOpenEligibleDonors}
       onOpenRepository={onOpenRepository}

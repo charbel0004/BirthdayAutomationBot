@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   api,
   calculatePresentationTotalScore,
   downloadFile,
+  emptyBloodDonorInterestForm,
   emptyBloodDriveForm,
   emptyDonationLocation,
   emptyQueteFocalDraft,
@@ -32,6 +33,7 @@ import {
 } from './lib/state';
 import {
   AppLoader,
+  BloodDonorInterestPage,
   BirthdayOverlay,
   BloodDriveOverlay,
   LoginPage,
@@ -66,6 +68,11 @@ export default function App() {
   const [bloodDriveSaving, setBloodDriveSaving] = useState(false);
   const [bloodDriveError, setBloodDriveError] = useState('');
   const [bloodDriveForm, setBloodDriveForm] = useState(emptyBloodDriveForm);
+  const [bloodDonorInterestForm, setBloodDonorInterestForm] = useState(emptyBloodDonorInterestForm);
+  const [bloodDonorInterestSaving, setBloodDonorInterestSaving] = useState(false);
+  const [bloodDonorInterestCheckingDuplicate, setBloodDonorInterestCheckingDuplicate] = useState(false);
+  const [bloodDonorInterestError, setBloodDonorInterestError] = useState('');
+  const [bloodDonorInterestSuccess, setBloodDonorInterestSuccess] = useState('');
   const [collectionLookupQuery, setCollectionLookupQuery] = useState('');
   const [collectionLookupResults, setCollectionLookupResults] = useState([]);
   const [selectedCollectionDonor, setSelectedCollectionDonor] = useState(null);
@@ -100,6 +107,7 @@ export default function App() {
   const [presentationScoreDraft, setPresentationScoreDraft] = useState(emptyPresentationScoreForm);
   const [presentationScoreOverlayOpen, setPresentationScoreOverlayOpen] = useState(false);
   const [presentationSpinning, setPresentationSpinning] = useState(false);
+  const bloodDonorDuplicateCheckIdRef = useRef(0);
 
   const showNotice = (message) => {
     setError('');
@@ -154,6 +162,7 @@ export default function App() {
     pages.queteFocals
   ].includes(page);
   const publicRecruitmentFormUrl = 'https://youth.lrcy-jbeil.online/#/recruitment-interest';
+  const publicBloodDonorFormUrl = 'https://youth.lrcy-jbeil.online/#/blood-donor-interest';
   const canAccessBloodDrive = hasModuleAccess(me?.user, 'bloodDrive');
   const canAccessRecruitment = hasModuleAccess(me?.user, 'recruitment');
   const canAccessPresentations = hasModuleAccess(me?.user, 'presentations');
@@ -212,6 +221,10 @@ export default function App() {
         name: isAdmin ? current.name : mePayload.user.displayName || mePayload.user.username
       }));
       setBloodDriveForm(emptyBloodDriveForm);
+      setBloodDonorInterestForm(emptyBloodDonorInterestForm);
+      setBloodDonorInterestCheckingDuplicate(false);
+      setBloodDonorInterestError('');
+      setBloodDonorInterestSuccess('');
       setCollectionLookupQuery('');
       setCollectionLookupResults([]);
       setSelectedCollectionDonor(null);
@@ -756,6 +769,96 @@ export default function App() {
     }
   };
 
+  const submitBloodDonorInterest = async (event) => {
+    event.preventDefault();
+    if (bloodDonorInterestCheckingDuplicate || bloodDonorInterestError) {
+      return;
+    }
+    setBloodDonorInterestSaving(true);
+    setBloodDonorInterestError('');
+    setBloodDonorInterestSuccess('');
+
+    try {
+      await api('/api/blood-drive/donors/public-interest', {
+        method: 'POST',
+        body: bloodDonorInterestForm
+      });
+      setBloodDonorInterestForm(emptyBloodDonorInterestForm);
+      setBloodDonorInterestCheckingDuplicate(false);
+      setBloodDonorInterestSuccess('Your registration has been submitted successfully. The blood drive team will contact you when a suitable future donation opportunity is available.');
+    } catch (err) {
+      setBloodDonorInterestError(err.message);
+    } finally {
+      setBloodDonorInterestSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (page !== pages.bloodDonorInterestPublic) {
+      return undefined;
+    }
+
+    const trimmedFirstName = bloodDonorInterestForm.firstName.trim();
+    const trimmedLastName = bloodDonorInterestForm.lastName.trim();
+    const trimmedPhoneNumber = bloodDonorInterestForm.phoneNumber.trim();
+    const trimmedDateOfBirth = bloodDonorInterestForm.dateOfBirth.trim();
+
+    if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !trimmedDateOfBirth) {
+      setBloodDonorInterestCheckingDuplicate(false);
+      setBloodDonorInterestError('');
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      const currentCheckId = bloodDonorDuplicateCheckIdRef.current + 1;
+      bloodDonorDuplicateCheckIdRef.current = currentCheckId;
+      setBloodDonorInterestCheckingDuplicate(true);
+
+      try {
+        const payload = await api('/api/blood-drive/donors/public-interest/check-duplicate', {
+          method: 'POST',
+          body: {
+            firstName: trimmedFirstName,
+            lastName: trimmedLastName,
+            phoneNumber: trimmedPhoneNumber,
+            dateOfBirth: trimmedDateOfBirth
+          }
+        });
+
+        if (bloodDonorDuplicateCheckIdRef.current !== currentCheckId) {
+          return;
+        }
+
+        setBloodDonorInterestError(
+          payload.isDuplicate
+            ? 'These details already match an existing registration.'
+            : ''
+        );
+      } catch (err) {
+        if (bloodDonorDuplicateCheckIdRef.current !== currentCheckId) {
+          return;
+        }
+        setBloodDonorInterestError(err.message);
+      } finally {
+        if (bloodDonorDuplicateCheckIdRef.current === currentCheckId) {
+          setBloodDonorInterestCheckingDuplicate(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      bloodDonorDuplicateCheckIdRef.current += 1;
+      setBloodDonorInterestCheckingDuplicate(false);
+    };
+  }, [
+    page,
+    bloodDonorInterestForm.firstName,
+    bloodDonorInterestForm.lastName,
+    bloodDonorInterestForm.phoneNumber,
+    bloodDonorInterestForm.dateOfBirth
+  ]);
+
   const refreshCollectionLookup = async (value) => {
     const nextValue = String(value || '');
     if (nextValue.trim().length < 2) {
@@ -909,6 +1012,14 @@ export default function App() {
     }
   };
 
+  const isEditingFormField = () => {
+    const activeElement = document.activeElement;
+    return (
+      activeElement instanceof HTMLElement &&
+      ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName)
+    );
+  };
+
   useEffect(() => {
     if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage && !isQuetePage)) {
       return undefined;
@@ -920,6 +1031,10 @@ export default function App() {
 
     const intervalId = window.setInterval(async () => {
       if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      if (isEditingFormField()) {
         return;
       }
 
@@ -937,16 +1052,6 @@ export default function App() {
         }
 
         if (page === pages.repository) {
-          const activeElement = document.activeElement;
-          const isEditingRepository =
-            activeElement instanceof HTMLElement &&
-            activeElement.closest('.repository-table-wrap') &&
-            ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName);
-
-          if (isEditingRepository) {
-            return;
-          }
-
           const repositoryPayload = await api(buildDonorQuery(repositoryFilters, false), { token });
           setAllDonors(repositoryPayload);
           return;
@@ -1216,6 +1321,24 @@ export default function App() {
     );
   }
 
+  if (page === pages.bloodDonorInterestPublic) {
+    return (
+      <BloodDonorInterestPage
+        form={bloodDonorInterestForm}
+        onChange={(field, value) => {
+          setBloodDonorInterestError('');
+          setBloodDonorInterestSuccess('');
+          setBloodDonorInterestForm((current) => ({ ...current, [field]: value }));
+        }}
+        onSubmit={submitBloodDonorInterest}
+        saving={bloodDonorInterestSaving}
+        checkingDuplicate={bloodDonorInterestCheckingDuplicate}
+        error={bloodDonorInterestError}
+        success={bloodDonorInterestSuccess}
+      />
+    );
+  }
+
   if (!token) return <LoginPage onLogin={handleLogin} />;
   if (loading) return <AppLoader title="Preparing your dashboard" subtitle="Loading access, workspace records, and your operational dashboard." />;
   if (!me) return <AppLoader title="Unable to load the dashboard" subtitle="The session could not be prepared. Try logging in again." />;
@@ -1229,6 +1352,7 @@ export default function App() {
         <BloodDriveRouter
           page={page}
           donorStats={donorStats}
+          publicFormUrl={publicBloodDonorFormUrl}
           donorFilters={donorFilters}
           setDonorFilters={setDonorFilters}
           eligibleDonors={eligibleDonors}

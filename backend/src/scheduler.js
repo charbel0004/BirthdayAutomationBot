@@ -64,17 +64,37 @@ async function runBirthdayCheck({ force = false } = {}) {
         .toArray()
     : [];
   const ownersById = new Map(birthdayOwners.map((user) => [String(user._id), user]));
+  const delivery = [];
 
-  if (matched.length > 0 && telegram.botToken) {
+  if (matched.length > 0) {
     const template = telegram.birthdayMessageTemplate || 'Happy Birthday, {name}!';
 
     for (const member of matched) {
       const owner = ownersById.get(String(member.userId || ''));
-      const targetChatId = owner?.role === 'new recruit'
+      const targetGroup = owner?.role === 'new recruit' ? 'newRecruits' : 'members';
+      const targetChatId = targetGroup === 'newRecruits'
         ? telegram.newRecruitsGroupChatId
         : telegram.membersGroupChatId;
 
+      if (!telegram.botToken) {
+        delivery.push({
+          memberId: String(member._id),
+          name: member.name,
+          status: 'skipped',
+          reason: 'Missing Telegram bot token'
+        });
+        continue;
+      }
+
       if (!targetChatId) {
+        delivery.push({
+          memberId: String(member._id),
+          name: member.name,
+          status: 'skipped',
+          reason: targetGroup === 'newRecruits'
+            ? 'Missing Telegram new recruits group chat ID'
+            : 'Missing Telegram members group chat ID'
+        });
         continue;
       }
 
@@ -83,7 +103,26 @@ async function runBirthdayCheck({ force = false } = {}) {
         chatId: targetChatId,
         text: buildBirthdayMessage(template, member)
       });
+
+      delivery.push({
+        memberId: String(member._id),
+        name: member.name,
+        status: 'sent',
+        chatId: targetChatId
+      });
     }
+  }
+
+  const blockedDeliveries = delivery.filter((item) => item.status !== 'sent');
+
+  if (blockedDeliveries.length > 0) {
+    return {
+      skipped: false,
+      date: isoDate,
+      matched: matched.map((member) => ({ id: String(member._id), name: member.name })),
+      delivery,
+      error: blockedDeliveries.map((item) => `${item.name}: ${item.reason}`).join('; ')
+    };
   }
 
   await writeTelegramSettings({ lastRunDate: isoDate });
@@ -91,7 +130,8 @@ async function runBirthdayCheck({ force = false } = {}) {
   return {
     skipped: false,
     date: isoDate,
-    matched: matched.map((member) => ({ id: String(member._id), name: member.name }))
+    matched: matched.map((member) => ({ id: String(member._id), name: member.name })),
+    delivery
   };
 }
 
@@ -105,9 +145,15 @@ function getDelayUntilNextMidnightMs(timezone) {
 }
 
 function startBirthdayScheduler() {
-  runBirthdayCheck().catch((err) => {
-    console.error('[birthday-check] startup run failed:', err.message);
-  });
+  runBirthdayCheck()
+    .then((result) => {
+      if (result?.error) {
+        console.error('[birthday-check] startup run incomplete:', result.error);
+      }
+    })
+    .catch((err) => {
+      console.error('[birthday-check] startup run failed:', err.message);
+    });
 
   let timeoutId;
   let stopped = false;
@@ -124,7 +170,10 @@ function startBirthdayScheduler() {
 
       timeoutId = setTimeout(async () => {
         try {
-          await runBirthdayCheck();
+          const result = await runBirthdayCheck();
+          if (result?.error) {
+            console.error('[birthday-check] scheduled run incomplete:', result.error);
+          }
         } catch (error) {
           console.error('[birthday-check] scheduled run failed:', error.message);
         } finally {

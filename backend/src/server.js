@@ -636,27 +636,90 @@ async function findExistingBloodDonor({ firstName, lastName, dateOfBirth, phoneN
   const normalizedFullName = normalizeName(`${firstName} ${lastName}`);
   const normalizedPhone = normalizePhoneNumber(phoneNumber);
   const trimmedPhone = String(phoneNumber || '').trim();
-  const matchClauses = [
-    { normalizedFullName, dateOfBirth: formatDateOnly(dateOfBirth) }
-  ];
+  const query = {
+    normalizedFullName,
+    dateOfBirth: formatDateOnly(dateOfBirth)
+  };
 
   if (normalizedPhone) {
-    matchClauses.push({ normalizedPhoneNumber: normalizedPhone });
+    query.normalizedPhoneNumber = normalizedPhone;
+  } else if (trimmedPhone) {
+    query.phoneNumber = trimmedPhone;
   }
-
-  if (trimmedPhone) {
-    matchClauses.push({ phoneNumber: trimmedPhone });
-  }
-
-  const query = {
-    $or: matchClauses
-  };
 
   if (excludeId) {
     query._id = { $ne: excludeId };
   }
 
   return bloodDonorsCollection().findOne(query);
+}
+
+async function createBloodDonorProspect({ firstName, lastName, dateOfBirth, phoneNumber, notes, updatedByUserId = null, updatedByName = '' }) {
+  const trimmedFirstName = String(firstName || '').trim();
+  const trimmedLastName = String(lastName || '').trim();
+  const trimmedPhoneNumber = String(phoneNumber || '').trim();
+
+  if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth) {
+    const error = new Error('Please complete first name, last name, phone number, and date of birth.');
+    error.status = 400;
+    throw error;
+  }
+
+  const numericAge = calculateAgeFromDateOfBirth(dateOfBirth);
+
+  if (!Number.isFinite(numericAge) || numericAge < 18 || numericAge > 75) {
+    const error = new Error('The date of birth must correspond to an age between 18 and 75.');
+    error.status = 400;
+    throw error;
+  }
+
+  const duplicate = await findExistingBloodDonor({
+    firstName: trimmedFirstName,
+    lastName: trimmedLastName,
+    dateOfBirth,
+    phoneNumber: trimmedPhoneNumber
+  });
+
+  if (duplicate) {
+    const error = new Error('This donor is already in the repository. Please use the existing record instead of creating a new one.');
+    error.status = 409;
+    throw error;
+  }
+
+  const currentDate = now();
+  const today = formatDateOnly(currentDate);
+  const payload = {
+    userId: null,
+    firstName: trimmedFirstName,
+    lastName: trimmedLastName,
+    normalizedFullName: normalizeName(`${trimmedFirstName} ${trimmedLastName}`),
+    dateOfBirth: formatDateOnly(dateOfBirth),
+    phoneNumber: trimmedPhoneNumber,
+    normalizedPhoneNumber: normalizePhoneNumber(trimmedPhoneNumber),
+    location: '',
+    locationHistory: [],
+    contacted: false,
+    willingToDonate: false,
+    callStatus: '',
+    lastCallDate: '',
+    upcomingDonationDate: '',
+    callHistory: [],
+    notes: typeof notes === 'string' ? notes.trim() : '',
+    lastDonationDate: '',
+    lastUpdatedDate: today,
+    updatedByUserId,
+    updatedByName,
+    nextEligibleDonationDate: today,
+    updatedAt: currentDate,
+    createdAt: currentDate
+  };
+
+  const result = await bloodDonorsCollection().insertOne(payload);
+  return sanitizeBloodDonor({
+    ...payload,
+    _id: result.insertedId,
+    isEligible: payload.nextEligibleDonationDate <= today
+  });
 }
 
 async function findExistingRecruitmentInterestLead({ firstName, lastName, dateOfBirth, phoneNumber, excludeId = null }) {
@@ -1297,6 +1360,42 @@ app.post('/api/recruitment-interest', async (req, res) => {
   res.status(201).json(sanitizeRecruitmentInterestLead({ ...payload, _id: result.insertedId }));
 });
 
+app.post('/api/blood-drive/donors/public-interest', async (req, res) => {
+  try {
+    const donor = await createBloodDonorProspect({
+      ...req.body,
+      updatedByName: 'Public donor interest form'
+    });
+    return res.status(201).json(donor);
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message || 'Unable to submit donor interest form.' });
+  }
+});
+
+app.post('/api/blood-drive/donors/public-interest/check-duplicate', async (req, res) => {
+  try {
+    const { firstName, lastName, dateOfBirth, phoneNumber } = req.body || {};
+    const trimmedFirstName = String(firstName || '').trim();
+    const trimmedLastName = String(lastName || '').trim();
+    const trimmedPhoneNumber = String(phoneNumber || '').trim();
+
+    if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth) {
+      return res.json({ isDuplicate: false });
+    }
+
+    const duplicate = await findExistingBloodDonor({
+      firstName: trimmedFirstName,
+      lastName: trimmedLastName,
+      dateOfBirth,
+      phoneNumber: trimmedPhoneNumber
+    });
+
+    return res.json({ isDuplicate: Boolean(duplicate) });
+  } catch (error) {
+    return res.status(500).json({ error: 'Unable to check donor details right now.' });
+  }
+});
+
 app.use('/api', authMiddleware, requireAuthenticatedUser);
 
 const requireBloodDriveAccess = requireModuleAccess('bloodDrive');
@@ -1872,69 +1971,16 @@ app.get('/api/blood-drive/my-record', requireBloodDriveAccess, async (req, res) 
 });
 
 app.post('/api/blood-drive/donors/prospects', requireBloodDriveAccess, async (req, res) => {
-  const { firstName, lastName, dateOfBirth, phoneNumber, notes } = req.body || {};
-  const trimmedFirstName = String(firstName || '').trim();
-  const trimmedLastName = String(lastName || '').trim();
-  const trimmedPhoneNumber = String(phoneNumber || '').trim();
-
-  if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth) {
-    return res
-      .status(400)
-      .json({ error: 'Please complete first name, last name, phone number, and date of birth.' });
+  try {
+    const donor = await createBloodDonorProspect({
+      ...req.body,
+      updatedByUserId: req.account._id,
+      updatedByName: req.account.displayName || req.account.username
+    });
+    return res.status(201).json(donor);
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message || 'Unable to create donor prospect.' });
   }
-
-  const numericAge = calculateAgeFromDateOfBirth(dateOfBirth);
-
-  if (!Number.isFinite(numericAge) || numericAge < 18 || numericAge > 75) {
-    return res.status(400).json({ error: 'The date of birth must correspond to an age between 18 and 75.' });
-  }
-
-  const duplicate = await findExistingBloodDonor({
-    firstName: trimmedFirstName,
-    lastName: trimmedLastName,
-    dateOfBirth,
-    phoneNumber: trimmedPhoneNumber
-  });
-  if (duplicate) {
-    return res.status(409).json({ error: 'This donor is already in the repository. Please use the existing record instead of creating a new one.' });
-  }
-
-  const currentDate = now();
-  const today = formatDateOnly(currentDate);
-  const payload = {
-    userId: null,
-    firstName: trimmedFirstName,
-    lastName: trimmedLastName,
-    normalizedFullName: normalizeName(`${trimmedFirstName} ${trimmedLastName}`),
-    dateOfBirth: formatDateOnly(dateOfBirth),
-    phoneNumber: trimmedPhoneNumber,
-    normalizedPhoneNumber: normalizePhoneNumber(trimmedPhoneNumber),
-    location: '',
-    locationHistory: [],
-    contacted: false,
-    willingToDonate: false,
-    callStatus: '',
-    lastCallDate: '',
-    upcomingDonationDate: '',
-    callHistory: [],
-    notes: typeof notes === 'string' ? notes.trim() : '',
-    lastDonationDate: '',
-    lastUpdatedDate: today,
-    updatedByUserId: req.account._id,
-    updatedByName: req.account.displayName || req.account.username,
-    nextEligibleDonationDate: today,
-    updatedAt: currentDate,
-    createdAt: currentDate
-  };
-
-  const result = await bloodDonorsCollection().insertOne(payload);
-  return res.status(201).json(
-    sanitizeBloodDonor({
-      ...payload,
-      _id: result.insertedId,
-      isEligible: payload.nextEligibleDonationDate <= today
-    })
-  );
 });
 
 app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => {

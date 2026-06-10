@@ -70,6 +70,14 @@ export const emptyRecruitmentInterestForm = {
   dateOfBirth: ''
 };
 
+export const emptyBloodDonorInterestForm = {
+  firstName: '',
+  lastName: '',
+  phoneNumber: '',
+  dateOfBirth: '',
+  notes: ''
+};
+
 export const emptyPresentationTopic = {
   title: '',
   description: ''
