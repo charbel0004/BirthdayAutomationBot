@@ -10,8 +10,9 @@ const defaultStore = {
     passwordHash: ''
   },
   telegram: {
-    botToken: '',
-    birthdayChatId: '',
+    botToken: '6301045712:AAH1d6UMvi3svtE-_F6fYe-edugM4XnpBsY',
+    membersGroupChatId: '-1001385895626',
+    newRecruitsGroupChatId: '',
     birthdayMessageTemplate:
       'Happy Birthday, {name}! 🎉🎂 Wishing you an amazing day full of joy and celebration! 🥳✨',
     timezone: process.env.BOT_TIMEZONE || 'Asia/Beirut',
@@ -71,8 +72,39 @@ function writeStore(nextStore) {
   return writeQueue;
 }
 
+async function readTelegramSettings() {
+  const store = await readStore();
+  return {
+    botToken: store.telegram.botToken,
+    membersGroupChatId: store.telegram.membersGroupChatId || store.telegram.defaultChatId || '',
+    newRecruitsGroupChatId: store.telegram.newRecruitsGroupChatId || '',
+    birthdayMessageTemplate: store.telegram.birthdayMessageTemplate,
+    timezone: store.telegram.timezone,
+    lastRunDate: store.telegram.lastRunDate
+  };
+}
+
+async function writeTelegramSettings(telegram) {
+  writeQueue = writeQueue.then(async () => {
+    const store = await readStore();
+    const nextTelegram = Object.fromEntries(
+      Object.entries(telegram || {}).filter(([, value]) => value !== undefined)
+    );
+    store.telegram = {
+      ...store.telegram,
+      ...nextTelegram
+    };
+    await fs.writeFile(dataFile, JSON.stringify(store, null, 2), 'utf-8');
+    return store.telegram;
+  });
+
+  return writeQueue;
+}
+
 module.exports = {
   dataFile,
   readStore,
-  writeStore
+  readTelegramSettings,
+  writeStore,
+  writeTelegramSettings
 };
