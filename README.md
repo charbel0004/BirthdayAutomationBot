@@ -76,13 +76,16 @@ The backend is prepared for Fly.io with:
 - `fly.toml` targeting `backend-hidden-fog-2243`
 - a `/api/health` health check
 - explicit CORS allow-list support
-- a persistent `/data` volume for `store.json`
+- a persistent `/data` volume for legacy bootstrap data
+- Telegram birthday settings persisted in MongoDB
+- one Fly machine kept running so the midnight scheduler can execute
 
 Create `backend/.env` from `backend/.env.example` and set real values for:
 
 - `MONGO_URI`
 - `JWT_SECRET`
 - `DEFAULT_ADMIN_PASSWORD`
+- `TELEGRAM_BOT_TOKEN` (optional fallback if not already stored in MongoDB)
 - `CORS_ALLOWED_ORIGINS`
 
 ### Fly commands
@@ -99,3 +102,10 @@ fly deploy -a backend-hidden-fog-2243
 ```
 
 If you also want the default GitHub Pages domain to work during setup, add it to `CORS_ALLOWED_ORIGINS` as well.
+
+## Birthday Scheduler Notes
+
+- The birthday check already reads active birthdays from MongoDB.
+- Telegram settings and the `lastRunDate` guard are now stored in MongoDB as well.
+- The scheduler still runs in the backend process, not inside MongoDB itself.
+- If Fly scales to zero, a midnight timer cannot fire, so `min_machines_running = 1` is required.

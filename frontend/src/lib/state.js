@@ -73,8 +73,8 @@ export function getHashForPage(page) {
 
 export function createDefaultSettings() {
   return {
-    membersGroupChatId: '',
-    newRecruitsGroupChatId: '',
+    botToken: '',
+    birthdayChatId: '',
     timezone: 'Asia/Beirut',
     hasBotToken: false
   };

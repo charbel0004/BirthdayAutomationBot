@@ -1,5 +1,5 @@
-const { birthdaysCollection, usersCollection } = require('./db');
-const { readTelegramSettings, writeTelegramSettings } = require('./store');
+const { birthdaysCollection } = require('./db');
+const { readTelegramSettings, writeTelegramSettings } = require('./settings');
 const { sendTelegramMessage } = require('./telegram');
 
 function pad(n) {
@@ -54,28 +54,15 @@ async function runBirthdayCheck({ force = false } = {}) {
 
   const matched = await birthdaysCollection()
     .find(baseMatch)
-    .project({ name: 1, userId: 1 })
+    .project({ name: 1 })
     .toArray();
-
-  const birthdayOwners = matched.length
-    ? await usersCollection()
-        .find({ _id: { $in: matched.map((member) => member.userId).filter(Boolean) } })
-        .project({ role: 1 })
-        .toArray()
-    : [];
-  const ownersById = new Map(birthdayOwners.map((user) => [String(user._id), user]));
   const delivery = [];
 
   if (matched.length > 0) {
     const template = telegram.birthdayMessageTemplate || 'Happy Birthday, {name}!';
+    const targetChatId = telegram.birthdayChatId;
 
     for (const member of matched) {
-      const owner = ownersById.get(String(member.userId || ''));
-      const targetGroup = owner?.role === 'new recruit' ? 'newRecruits' : 'members';
-      const targetChatId = targetGroup === 'newRecruits'
-        ? telegram.newRecruitsGroupChatId
-        : telegram.membersGroupChatId;
-
       if (!telegram.botToken) {
         delivery.push({
           memberId: String(member._id),
@@ -91,9 +78,7 @@ async function runBirthdayCheck({ force = false } = {}) {
           memberId: String(member._id),
           name: member.name,
           status: 'skipped',
-          reason: targetGroup === 'newRecruits'
-            ? 'Missing Telegram new recruits group chat ID'
-            : 'Missing Telegram members group chat ID'
+          reason: 'Missing Telegram birthday chat ID'
         });
         continue;
       }

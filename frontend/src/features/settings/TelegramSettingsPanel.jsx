@@ -4,23 +4,25 @@ export default function TelegramSettingsPanel({ settings, setSettings, onSave })
       <div className="section-head">
         <div>
           <h2>Telegram Control</h2>
-          <p>Bot token and message template remain in the JSON configuration file. Set separate Telegram group chat IDs for members/admins and new recruits here.</p>
+          <p>Telegram delivery settings are stored in MongoDB. Set the single Telegram chat ID that should receive birthday messages.</p>
         </div>
       </div>
       <form onSubmit={onSave} className="grid-form">
         <label>
-          Members and admins group chat ID
+          Bot token
           <input
-            value={settings.membersGroupChatId}
-            onChange={(event) => setSettings({ ...settings, membersGroupChatId: event.target.value })}
-            placeholder="-1001234567890"
+            type="password"
+            value={settings.botToken}
+            onChange={(event) => setSettings({ ...settings, botToken: event.target.value })}
+            placeholder="1234567890:AA..."
+            autoComplete="off"
           />
         </label>
         <label>
-          New recruits group chat ID
+          Birthday chat ID
           <input
-            value={settings.newRecruitsGroupChatId}
-            onChange={(event) => setSettings({ ...settings, newRecruitsGroupChatId: event.target.value })}
+            value={settings.birthdayChatId}
+            onChange={(event) => setSettings({ ...settings, birthdayChatId: event.target.value })}
             placeholder="-1001234567890"
           />
         </label>

@@ -24,7 +24,8 @@ const {
   usersCollection
 } = require('./db');
 const { startBirthdayScheduler, runBirthdayCheck } = require('./scheduler');
-const { dataFile, readTelegramSettings, writeTelegramSettings } = require('./store');
+const { readTelegramSettings, writeTelegramSettings } = require('./settings');
+const { dataFile } = require('./store');
 
 const PORT = Number(process.env.PORT || 4000);
 const app = express();
@@ -1199,8 +1200,9 @@ app.get('/api/health', async (req, res) => {
     ok: true,
     database: DATABASE_NAME,
     dataFile,
+    telegramSettingsStore: 'mongodb',
     telegramConfigured: Boolean(
-      telegram.botToken && (telegram.membersGroupChatId || telegram.newRecruitsGroupChatId)
+      telegram.botToken && telegram.birthdayChatId
     )
   });
 });
@@ -1419,8 +1421,7 @@ app.get('/api/me', async (req, res) => {
     telegram: {
       timezone: telegram.timezone,
       hasBotToken: Boolean(telegram.botToken),
-      membersGroupChatId: telegram.membersGroupChatId,
-      newRecruitsGroupChatId: telegram.newRecruitsGroupChatId
+      birthdayChatId: telegram.birthdayChatId
     },
     ownBirthdays: ownBirthdays.map(sanitizeBirthday)
   });
@@ -3103,8 +3104,8 @@ app.put('/api/presentations/evaluations/:presenterId', requireRole('admin', 'mem
 app.get('/api/settings', requireRole('admin'), async (req, res) => {
   const telegram = await readTelegramSettings();
   res.json({
-    membersGroupChatId: telegram.membersGroupChatId,
-    newRecruitsGroupChatId: telegram.newRecruitsGroupChatId,
+    botToken: telegram.botToken,
+    birthdayChatId: telegram.birthdayChatId,
     birthdayMessageTemplate: telegram.birthdayMessageTemplate,
     timezone: telegram.timezone,
     hasBotToken: Boolean(telegram.botToken)
@@ -3112,18 +3113,18 @@ app.get('/api/settings', requireRole('admin'), async (req, res) => {
 });
 
 app.put('/api/settings', requireRole('admin'), async (req, res) => {
-  const { membersGroupChatId, newRecruitsGroupChatId } = req.body || {};
+  const { botToken, birthdayChatId } = req.body || {};
 
   const updated = await writeTelegramSettings({
-    membersGroupChatId:
-      typeof membersGroupChatId === 'string' ? membersGroupChatId.trim() : undefined,
-    newRecruitsGroupChatId:
-      typeof newRecruitsGroupChatId === 'string' ? newRecruitsGroupChatId.trim() : undefined
+    botToken:
+      typeof botToken === 'string' ? botToken.trim() : undefined,
+    birthdayChatId:
+      typeof birthdayChatId === 'string' ? birthdayChatId.trim() : undefined
   });
 
   res.json({
-    membersGroupChatId: updated.membersGroupChatId,
-    newRecruitsGroupChatId: updated.newRecruitsGroupChatId,
+    botToken: updated.botToken,
+    birthdayChatId: updated.birthdayChatId,
     birthdayMessageTemplate: updated.birthdayMessageTemplate,
     timezone: updated.timezone,
     hasBotToken: Boolean(updated.botToken)

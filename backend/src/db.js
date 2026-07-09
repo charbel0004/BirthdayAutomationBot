@@ -13,6 +13,7 @@ let database;
 const REQUIRED_COLLECTIONS = [
   'users',
   'birthdays',
+  'app_settings',
   'blood_donors',
   'donation_locations',
   'recruitment_interest_leads',
@@ -43,6 +44,10 @@ function birthdaysCollection() {
 
 function bloodDonorsCollection() {
   return getDb().collection('blood_donors');
+}
+
+function appSettingsCollection() {
+  return getDb().collection('app_settings');
 }
 
 function donationLocationsCollection() {
@@ -254,6 +259,7 @@ function toObjectId(value) {
 module.exports = {
   bloodDonorsCollection,
   birthdaysCollection,
+  appSettingsCollection,
   connectToDatabase,
   DATABASE_NAME,
   donationLocationsCollection,

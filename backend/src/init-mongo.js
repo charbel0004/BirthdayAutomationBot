@@ -3,6 +3,7 @@ const { connectToDatabase, getDb } = require('./db');
 const REQUIRED_COLLECTIONS = [
   'users',
   'birthdays',
+  'app_settings',
   'blood_donors',
   'presentation_topics',
   'presentation_slots',

@@ -239,8 +239,8 @@ export default function App() {
       if (isAdmin) {
         setUsers(payloads.users || []);
         setSettings({
-          membersGroupChatId: payloads.settings?.membersGroupChatId || '',
-          newRecruitsGroupChatId: payloads.settings?.newRecruitsGroupChatId || '',
+          botToken: payloads.settings?.botToken || '',
+          birthdayChatId: payloads.settings?.birthdayChatId || '',
           timezone: payloads.settings?.timezone || 'Asia/Beirut',
           hasBotToken: Boolean(payloads.settings?.hasBotToken)
         });
@@ -552,14 +552,14 @@ export default function App() {
         token,
         method: 'PUT',
         body: {
-          membersGroupChatId: settings.membersGroupChatId,
-          newRecruitsGroupChatId: settings.newRecruitsGroupChatId
+          botToken: settings.botToken,
+          birthdayChatId: settings.birthdayChatId
         }
       });
       setSettings((current) => ({
         ...current,
-        membersGroupChatId: payload.membersGroupChatId || '',
-        newRecruitsGroupChatId: payload.newRecruitsGroupChatId || '',
+        botToken: payload.botToken || '',
+        birthdayChatId: payload.birthdayChatId || '',
         timezone: payload.timezone || current.timezone,
         hasBotToken: Boolean(payload.hasBotToken)
       }));
