@@ -1029,13 +1029,15 @@ export default function App() {
     }
   };
 
-  const exportQueteReport = async () => {
+  const exportQueteReport = async (month = '') => {
     try {
-      await downloadFile('/api/quete/report/export', {
+      const normalizedMonth = /^\d{4}-\d{2}$/.test(month) ? month : '';
+      const query = normalizedMonth ? `?month=${encodeURIComponent(normalizedMonth)}` : '';
+      await downloadFile(`/api/quete/report/export${query}`, {
         token,
-        filename: 'quete-report.xlsx'
+        filename: normalizedMonth ? `quete-report-${normalizedMonth}.xlsx` : 'quete-report.xlsx'
       });
-      showNotice('Quete report downloaded successfully.');
+      showNotice(`${normalizedMonth ? 'Monthly Quete' : 'Quete'} report downloaded successfully.`);
     } catch (err) {
       setError(err.message);
     }

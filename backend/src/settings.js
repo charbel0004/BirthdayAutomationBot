@@ -96,7 +96,37 @@ async function writeTelegramSettings(telegram) {
   return nextSettings;
 }
 
+async function claimBirthdayDelivery(date, memberId) {
+  await readTelegramSettings();
+  const deliveryKey = `${date}:${memberId}`;
+  const result = await appSettingsCollection().updateOne(
+    {
+      _id: TELEGRAM_SETTINGS_ID,
+      birthdayDeliveryKeys: { $ne: deliveryKey }
+    },
+    {
+      $addToSet: { birthdayDeliveryKeys: deliveryKey },
+      $set: { updatedAt: now() }
+    }
+  );
+
+  return result.modifiedCount === 1;
+}
+
+async function releaseBirthdayDelivery(date, memberId) {
+  const deliveryKey = `${date}:${memberId}`;
+  await appSettingsCollection().updateOne(
+    { _id: TELEGRAM_SETTINGS_ID },
+    {
+      $pull: { birthdayDeliveryKeys: deliveryKey },
+      $set: { updatedAt: now() }
+    }
+  );
+}
+
 module.exports = {
+  claimBirthdayDelivery,
   readTelegramSettings,
+  releaseBirthdayDelivery,
   writeTelegramSettings
 };

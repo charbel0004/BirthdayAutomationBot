@@ -1,5 +1,10 @@
 const { birthdaysCollection } = require('./db');
-const { readTelegramSettings, writeTelegramSettings } = require('./settings');
+const {
+  claimBirthdayDelivery,
+  readTelegramSettings,
+  releaseBirthdayDelivery,
+  writeTelegramSettings
+} = require('./settings');
 const { sendTelegramMessage } = require('./telegram');
 
 function pad(n) {
@@ -83,22 +88,44 @@ async function runBirthdayCheck({ force = false } = {}) {
         continue;
       }
 
-      await sendTelegramMessage({
-        botToken: telegram.botToken,
-        chatId: targetChatId,
-        text: buildBirthdayMessage(template, member)
-      });
+      const memberId = String(member._id);
+      const claimed = await claimBirthdayDelivery(isoDate, memberId);
+      if (!claimed) {
+        delivery.push({
+          memberId,
+          name: member.name,
+          status: 'already-sent',
+          reason: 'Birthday message already delivered today'
+        });
+        continue;
+      }
 
-      delivery.push({
-        memberId: String(member._id),
-        name: member.name,
-        status: 'sent',
-        chatId: targetChatId
-      });
+      try {
+        await sendTelegramMessage({
+          botToken: telegram.botToken,
+          chatId: targetChatId,
+          text: buildBirthdayMessage(template, member)
+        });
+
+        delivery.push({
+          memberId,
+          name: member.name,
+          status: 'sent',
+          chatId: targetChatId
+        });
+      } catch (error) {
+        await releaseBirthdayDelivery(isoDate, memberId);
+        delivery.push({
+          memberId,
+          name: member.name,
+          status: 'failed',
+          reason: error.message
+        });
+      }
     }
   }
 
-  const blockedDeliveries = delivery.filter((item) => item.status !== 'sent');
+  const blockedDeliveries = delivery.filter((item) => item.status === 'skipped' || item.status === 'failed');
 
   if (blockedDeliveries.length > 0) {
     return {

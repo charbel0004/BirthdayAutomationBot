@@ -752,55 +752,78 @@ function QueteShiftSetupPanel({ draft, setDraft, shifts, onSaveShift, onStartEdi
 }
 
 function QueteReportPanel({ data, onExportReport }) {
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  );
+  const monthlyShifts = useMemo(() => {
+    return (data.admin?.allShifts || data.shifts || [])
+      .filter((shift) => String(shift.date || toLocalDateInputValue(shift.startAt)).startsWith(selectedMonth))
+      .sort((left, right) => new Date(left.startAt).getTime() - new Date(right.startAt).getTime());
+  }, [data.admin?.allShifts, data.shifts, selectedMonth]);
+  const monthlyTotals = useMemo(() => monthlyShifts.reduce((totals, shift) => ({
+    capacity: totals.capacity + Number(shift.capacity || 0),
+    reserved: totals.reserved + Number(shift.reservedCount || 0),
+    available: totals.available + Number(shift.availableSeats || 0)
+  }), { capacity: 0, reserved: 0, available: 0 }), [monthlyShifts]);
+
   return (
-    <section className="panel">
-      <div className="section-head">
-        <div>
-          <h2>Participation report</h2>
-          <p>Weighted totals use road/church = 1 and restaurant/church mass = 0.5, matching the web report exactly.</p>
+    <>
+      <section className="panel quete-monthly-report">
+        <div className="section-head quete-report-heading">
+          <div>
+            <div className="section-label">Monthly operations</div>
+            <h2>All shifts & signups</h2>
+            <p>Review every shift for one month, its capacity, open spots, and everyone who signed up.</p>
+          </div>
+          <div className="quete-report-actions">
+            <label>
+              <span>Report month</span>
+              <input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} />
+            </label>
+            <button type="button" onClick={() => onExportReport(selectedMonth)} disabled={!selectedMonth}>
+              Download Monthly Excel
+            </button>
+          </div>
         </div>
-        <button type="button" onClick={onExportReport}>Download Excel Report</button>
-      </div>
-      <div className="table-wrap quete-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Role</th>
-              <th>Road shifts</th>
-              <th>Restaurant shifts</th>
-              <th>Church shifts</th>
-              <th>Church masses</th>
-              <th>Total shifts taken</th>
-              <th>Weighted total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data.admin?.report || []).length ? (data.admin.report || []).map((entry) => (
-              <tr key={entry.user.id}>
-                <td>{entry.user.displayName}</td>
-                <td>{entry.user.role}</td>
-                <td>{entry.roadShifts}</td>
-                <td>{entry.restaurantShifts}</td>
-                <td>{entry.churchShifts}</td>
-                <td>{entry.churchMassShifts}</td>
-                <td>{entry.reservationsCount}</td>
-                <td>{entry.weightedTotal}</td>
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan="8">
-                  <div className="repository-empty-state">
-                    <strong>No participation recorded yet.</strong>
-                    <span>Once users reserve quete shifts, their totals will appear here.</span>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+        <div className="stats-row quete-monthly-stats">
+          <article className="stat-card"><span>Shifts</span><strong>{monthlyShifts.length}</strong></article>
+          <article className="stat-card"><span>Total spots</span><strong>{monthlyTotals.capacity}</strong></article>
+          <article className="stat-card"><span>Signed up</span><strong>{monthlyTotals.reserved}</strong></article>
+          <article className="stat-card"><span>Open spots</span><strong>{monthlyTotals.available}</strong></article>
+        </div>
+        <div className="table-wrap quete-table-wrap quete-all-shifts-table">
+          <table>
+            <thead><tr><th>Date & shift</th><th>Location</th><th>Category</th><th>Spots</th><th>Signed</th><th>Available</th><th>Signed members</th></tr></thead>
+            <tbody>
+              {monthlyShifts.length ? monthlyShifts.map((shift) => {
+                const signedMembers = (shift.reservations || []).map((reservation) => reservation.user?.displayName || 'Unknown member');
+                return (
+                  <tr key={shift.id}>
+                    <td><strong>{shift.title}</strong><small>{formatDateOnlyLabel(shift.startAt)} · {formatTimeOnlyLabel(shift.startAt)}</small></td>
+                    <td>{shift.location || '—'}</td>
+                    <td>{getShiftCategoryLabel(shift.shiftCategory)}</td>
+                    <td>{shift.capacity}</td>
+                    <td>{shift.reservedCount}</td>
+                    <td>{shift.availableSeats}</td>
+                    <td>{signedMembers.length ? <div className="quete-member-chips">{signedMembers.map((name, index) => <span key={`${shift.id}-${index}`}>{name}</span>)}</div> : <span className="muted-table-value">No signups</span>}</td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan="7"><div className="repository-empty-state"><strong>No shifts in this month.</strong><span>Choose another month or create a shift for the selected period.</span></div></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-head"><div><h2>All-time participation</h2><p>Weighted totals use road/church = 1 and restaurant/church mass = 0.5.</p></div></div>
+        <div className="table-wrap quete-table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Road</th><th>Restaurant</th><th>Church</th><th>Church masses</th><th>Total shifts</th><th>Weighted total</th></tr></thead><tbody>
+          {(data.admin?.report || []).length ? data.admin.report.map((entry) => <tr key={entry.user.id}><td>{entry.user.displayName}</td><td>{entry.user.role}</td><td>{entry.roadShifts}</td><td>{entry.restaurantShifts}</td><td>{entry.churchShifts}</td><td>{entry.churchMassShifts}</td><td>{entry.reservationsCount}</td><td>{entry.weightedTotal}</td></tr>) : <tr><td colSpan="8"><div className="repository-empty-state"><strong>No participation recorded yet.</strong><span>Once users reserve shifts, their totals will appear here.</span></div></td></tr>}
+        </tbody></table></div>
+      </section>
+    </>
   );
 }
 

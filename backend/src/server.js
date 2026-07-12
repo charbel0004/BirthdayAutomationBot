@@ -2335,37 +2335,76 @@ app.get('/api/quete/dashboard', requireQueteAccess, async (req, res) => {
 app.get('/api/quete/report/export', requireRole('admin'), requireQueteAccess, async (req, res) => {
   try {
     const dashboard = await buildQueteDashboard(req.account);
+    const requestedMonth = String(req.query.month || '').trim();
+    if (requestedMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) {
+      return res.status(400).json({ error: 'Report month must use the YYYY-MM format.' });
+    }
+    const allShifts = dashboard.admin?.allShifts || dashboard.shifts || [];
+    const reportShifts = requestedMonth
+      ? allShifts.filter((shift) => String(shift.date || '').startsWith(requestedMonth))
+      : allShifts;
+    const totalCapacity = reportShifts.reduce((sum, shift) => sum + Number(shift.capacity || 0), 0);
+    const filledSeats = reportShifts.reduce((sum, shift) => sum + Number(shift.reservedCount || 0), 0);
+    const participantSummary = new Map();
+    const signupRows = [];
+
+    reportShifts.forEach((shift) => {
+      (shift.reservations || []).forEach((reservation) => {
+        const user = reservation.user || {};
+        const userKey = reservation.userId || user.id || user.displayName || 'unknown';
+        const current = participantSummary.get(userKey) || {
+          Name: user.displayName || user.username || 'Unknown member',
+          Role: user.role || '',
+          'Road shifts': 0,
+          'Restaurant shifts': 0,
+          'Church shifts': 0,
+          'Church masses': 0,
+          'Total shifts taken': 0,
+          'Weighted total': 0
+        };
+        const categoryColumn = {
+          road: 'Road shifts',
+          restaurant: 'Restaurant shifts',
+          church: 'Church shifts',
+          churchMass: 'Church masses'
+        }[shift.shiftCategory || 'road'];
+        if (categoryColumn) current[categoryColumn] += 1;
+        current['Total shifts taken'] += 1;
+        current['Weighted total'] = Number((current['Weighted total'] + Number(shift.shiftValue || 1)).toFixed(2));
+        participantSummary.set(userKey, current);
+        signupRows.push({
+          Date: shift.date,
+          Shift: shift.title,
+          'Shift type': shift.shiftType,
+          Category: shift.shiftCategory,
+          Location: shift.location || '',
+          'Member name': current.Name,
+          Role: current.Role,
+          'Signed up at': reservation.createdAt || ''
+        });
+      });
+    });
     const summaryRows = [
-      { Metric: 'Total shifts', Value: dashboard.stats.totalShifts },
-      { Metric: 'Total reservations', Value: dashboard.stats.totalReservations },
-      { Metric: 'Open shifts', Value: dashboard.stats.openShifts },
+      { Metric: 'Report month', Value: requestedMonth || 'All time' },
+      { Metric: 'Total shifts', Value: reportShifts.length },
+      { Metric: 'Total reservations', Value: filledSeats },
+      { Metric: 'Open shifts', Value: reportShifts.filter((shift) => shift.availableSeats > 0).length },
       { Metric: 'Total focals', Value: dashboard.stats.totalFocals },
-      { Metric: 'Road shifts', Value: dashboard.stats.roadShifts },
-      { Metric: 'Restaurant shifts', Value: dashboard.stats.restaurantShifts },
-      { Metric: 'Church shifts', Value: dashboard.stats.churchShifts },
-      { Metric: 'Church masses', Value: dashboard.stats.churchMassShifts },
-      { Metric: 'Total capacity', Value: dashboard.stats.totalCapacity },
-      { Metric: 'Filled seats', Value: dashboard.stats.filledSeats },
-      { Metric: 'Occupancy rate (%)', Value: dashboard.stats.occupancyRate },
-      { Metric: 'Unique participants', Value: dashboard.stats.uniqueParticipants },
-      { Metric: 'Admin participants', Value: dashboard.stats.adminParticipants },
-      { Metric: 'Member participants', Value: dashboard.stats.memberParticipants },
-      { Metric: 'New recruit participants', Value: dashboard.stats.recruitParticipants },
-      { Metric: 'Weighted shifts taken', Value: dashboard.stats.totalWeightedReservations }
+      { Metric: 'Road shifts', Value: reportShifts.filter((shift) => shift.shiftCategory === 'road').length },
+      { Metric: 'Restaurant shifts', Value: reportShifts.filter((shift) => shift.shiftCategory === 'restaurant').length },
+      { Metric: 'Church shifts', Value: reportShifts.filter((shift) => shift.shiftCategory === 'church').length },
+      { Metric: 'Church masses', Value: reportShifts.filter((shift) => shift.shiftCategory === 'churchMass').length },
+      { Metric: 'Total capacity', Value: totalCapacity },
+      { Metric: 'Filled seats', Value: filledSeats },
+      { Metric: 'Available seats', Value: Math.max(0, totalCapacity - filledSeats) },
+      { Metric: 'Occupancy rate (%)', Value: totalCapacity ? Number(((filledSeats / totalCapacity) * 100).toFixed(2)) : 0 },
+      { Metric: 'Unique participants', Value: participantSummary.size }
     ];
 
-    const participantRows = (dashboard.admin?.report || []).map((entry) => ({
-      Name: entry.user.displayName,
-      Role: entry.user.role,
-      'Road shifts': entry.roadShifts,
-      'Restaurant shifts': entry.restaurantShifts,
-      'Church shifts': entry.churchShifts,
-      'Church masses': entry.churchMassShifts,
-      'Total shifts taken': entry.reservationsCount,
-      'Weighted total': entry.weightedTotal
-    }));
+    const participantRows = Array.from(participantSummary.values())
+      .sort((left, right) => right['Weighted total'] - left['Weighted total'] || left.Name.localeCompare(right.Name));
 
-    const shiftRows = (dashboard.admin?.allShifts || dashboard.shifts || []).map((shift) => ({
+    const shiftRows = reportShifts.map((shift) => ({
       Title: shift.title,
       Date: shift.date,
       'Shift type': shift.shiftType,
@@ -2376,18 +2415,22 @@ app.get('/api/quete/report/export', requireRole('admin'), requireQueteAccess, as
       Capacity: shift.capacity,
       Reserved: shift.reservedCount,
       'Available seats': shift.availableSeats,
+      'Signed members': (shift.reservations || [])
+        .map((reservation) => reservation.user?.displayName || reservation.user?.username || 'Unknown member')
+        .join(', '),
       Location: shift.location || '',
       Notes: shift.notes || ''
     }));
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(participantRows), 'Participation Report');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Insights');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(shiftRows), 'Shifts');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Monthly Summary');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(shiftRows), 'All Shifts');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(signupRows), 'Shift Signups');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(participantRows), 'Participation Totals');
     const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="quete-report-${formatDateOnly(now())}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="quete-report-${requestedMonth || formatDateOnly(now())}.xlsx"`);
     res.send(workbookBuffer);
   } catch (error) {
     console.error('Failed to export quete report.', error);
@@ -3220,7 +3263,7 @@ app.put('/api/settings', requireRole('admin'), async (req, res) => {
 
 app.post('/api/birthdays/run-now', requireRole('admin'), async (req, res) => {
   try {
-    const result = await runBirthdayCheck({ force: true });
+    const result = await runBirthdayCheck();
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });

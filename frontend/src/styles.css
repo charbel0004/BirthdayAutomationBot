@@ -3767,3 +3767,38 @@ textarea:focus-visible {
   .login-panel > .auth-form:last-child { margin-bottom: 0; }
   .auth-mode-switch { margin-bottom: 20px; }
 }
+
+/* Quete consolidated monthly reporting */
+.quete-report-heading { align-items: flex-end; }
+.quete-report-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.quete-report-actions label { min-width: 190px; color: #52636f; font-size: .75rem; font-weight: 700; }
+.quete-report-actions input { min-height: 43px; background: rgba(255,255,255,.92); }
+.quete-report-actions button { min-height: 43px; white-space: nowrap; }
+.quete-monthly-stats { margin: 4px 0 18px; }
+.quete-all-shifts-table td:first-child { min-width: 190px; }
+.quete-all-shifts-table td:last-child { min-width: 230px; }
+.quete-all-shifts-table td strong { display: block; color: #173044; }
+.quete-all-shifts-table td small { display: block; margin-top: 4px; color: #75838d; white-space: nowrap; }
+.quete-member-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.quete-member-chips span {
+  display: inline-flex;
+  padding: 5px 8px;
+  border: 1px solid #dce5e9;
+  border-radius: 999px;
+  color: #344d5d;
+  background: #f4f7f8;
+  font-size: .72rem;
+  font-weight: 650;
+}
+.muted-table-value { color: #8a979f; font-size: .8rem; }
+
+@media (max-width: 760px) {
+  .quete-report-heading { align-items: stretch; }
+  .quete-report-actions { width: 100%; flex-direction: column; align-items: stretch; }
+  .quete-report-actions label { width: 100%; min-width: 0; }
+  .quete-report-actions button { width: 100%; }
+}
