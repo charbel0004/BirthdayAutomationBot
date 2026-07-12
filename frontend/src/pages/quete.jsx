@@ -74,7 +74,13 @@ function ShiftCard({
   onRemoveReservation
 }) {
   const todayKey = new Date().toISOString().slice(0, 10);
-  const isFullForNewUser = shift.availableSeats <= 0;
+  const reportedAvailableSeats = Number(shift.availableSeats);
+  const calculatedAvailableSeats = Number(shift.capacity || 0) - Number(shift.reservedCount || 0);
+  const availableSeats = Math.max(
+    0,
+    Number.isFinite(reportedAvailableSeats) ? reportedAvailableSeats : calculatedAvailableSeats
+  );
+  const isFullForNewUser = availableSeats === 0;
   const isReservationUpcoming = Boolean(shift.bookingOpensOn) && shift.bookingOpensOn > todayKey;
   const isReservationClosed = Boolean(shift.bookingClosesOn) && shift.bookingClosesOn < todayKey;
   const isReserveDisabled = isFullForNewUser || isReservedByCurrentUser || isReservationUpcoming || isReservationClosed;
@@ -112,15 +118,17 @@ function ShiftCard({
           ) : isReservationClosed ? (
             <div className="repository-badge">Closed</div>
           ) : (
-            <div className="repository-badge">{shift.availableSeats} seat{shift.availableSeats === 1 ? '' : 's'} left</div>
+            <div className="repository-badge">{availableSeats} seat{availableSeats === 1 ? '' : 's'} left</div>
           )}
           {!showMemberManager ? (
             <button
               type="button"
               className="secondary quete-quick-action"
               disabled={isReserveDisabled}
+              title={isFullForNewUser ? 'No seats are available for this shift.' : undefined}
               onClick={(event) => {
                 event.stopPropagation();
+                if (isReserveDisabled) return;
                 onReserve(shift.id);
               }}
             >
@@ -149,7 +157,15 @@ function ShiftCard({
         <div className="repository-card-row"><span>Notes</span><strong>{shift.notes || '—'}</strong></div>
       </div>
       <div className="actions" style={{ marginTop: 16 }} onClick={(event) => event.stopPropagation()}>
-        <button type="button" disabled={isReserveDisabled} onClick={() => onReserve(shift.id)}>
+        <button
+          type="button"
+          disabled={isReserveDisabled}
+          title={isFullForNewUser ? 'No seats are available for this shift.' : undefined}
+          onClick={() => {
+            if (isReserveDisabled) return;
+            onReserve(shift.id);
+          }}
+        >
           {isReservedByCurrentUser
             ? 'Already Reserved'
             : isReservationUpcoming
