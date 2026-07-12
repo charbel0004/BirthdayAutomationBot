@@ -19,19 +19,46 @@ export function LoaderAvatar() {
   return (
     <svg className="loader-avatar" viewBox="0 0 120 120" role="presentation">
       <defs>
-        <linearGradient id="uniformFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#6f879c" />
-          <stop offset="100%" stopColor="#4c6378" />
+        <linearGradient id="uniformFill" x1="0" x2="0.85" y1="0" y2="1">
+          <stop offset="0%" stopColor="#8295a6" />
+          <stop offset="52%" stopColor="#647a8d" />
+          <stop offset="100%" stopColor="#42596d" />
+        </linearGradient>
+        <linearGradient id="skinFill" x1="0.2" x2="0.8" y1="0" y2="1">
+          <stop offset="0%" stopColor="#f2c3a0" />
+          <stop offset="100%" stopColor="#d99a76" />
+        </linearGradient>
+        <linearGradient id="reflectiveFill" x1="0" x2="1">
+          <stop offset="0%" stopColor="#d8e2e8" />
+          <stop offset="50%" stopColor="#f2f6f8" />
+          <stop offset="100%" stopColor="#c8d5dd" />
         </linearGradient>
       </defs>
-      <circle cx="60" cy="60" r="50" fill="rgba(255,255,255,0.72)" />
-      <path d="M60 24c8 0 14 7 14 15s-6 14-14 14-14-6-14-14 6-15 14-15Z" fill="#17202a" />
-      <path d="M36 58c4-8 14-12 24-12s20 4 24 12l5 34c1 7-4 14-11 14H42c-7 0-12-7-11-14l5-34Z" fill="url(#uniformFill)" />
-      <path d="M37 61h46" stroke="#d9e3ef" strokeWidth="4" strokeLinecap="round" />
-      <path d="M34 68h52" stroke="#d9e3ef" strokeWidth="4" strokeLinecap="round" />
-      <circle cx="60" cy="76" r="14" fill="#fffaf7" stroke="#d8d7d4" strokeWidth="2" />
-      <path d="M60 67v18M51 76h18" stroke="#ba2028" strokeWidth="6" strokeLinecap="round" />
-      <path d="M39 56l-6 13M81 56l6 13" stroke="#52687b" strokeWidth="7" strokeLinecap="round" />
+      <circle cx="60" cy="60" r="51" fill="#edf3f6" />
+      <circle cx="60" cy="60" r="49" fill="none" stroke="#dce6eb" strokeWidth="1" />
+
+      <path d="M51 48h18v13H51Z" fill="url(#skinFill)" />
+      <path d="M36 59c4-8 14-12 24-12s20 4 24 12l6 34c1 8-4 14-12 14H42c-8 0-13-6-12-14l6-34Z" fill="url(#uniformFill)" />
+      <path d="M51 50l9 10-12 10-8-13c3-3 7-5 11-7ZM69 50 60 60l12 10 8-13c-3-3-7-5-11-7Z" fill="#526a7d" stroke="#91a3b1" strokeWidth="1" />
+      <path d="M60 60v46" stroke="#334b5f" strokeWidth="1.4" />
+      <path d="M42 84v20M78 84v20" stroke="#3d5568" strokeWidth="1" opacity=".7" />
+      <path d="M37 63h46" stroke="url(#reflectiveFill)" strokeWidth="4.5" strokeLinecap="round" />
+      <path d="M34 71h52" stroke="url(#reflectiveFill)" strokeWidth="4.5" strokeLinecap="round" />
+      <path d="M39 58l-6 13M81 58l6 13" stroke="#52687b" strokeWidth="7" strokeLinecap="round" />
+
+      <circle cx="60" cy="79" r="12.5" fill="#fff" stroke="#cbd5da" strokeWidth="1.5" />
+      <circle cx="60" cy="79" r="10" fill="#f8fafb" stroke="#e4e9ec" strokeWidth=".8" />
+      <path d="M60 71v16M52 79h16" stroke="#c51d25" strokeWidth="5" strokeLinecap="square" />
+
+      <ellipse cx="60" cy="38" rx="14" ry="16" fill="url(#skinFill)" />
+      <path d="M46 37c0-11 6-17 15-17 9 0 15 6 15 17-3-1-5-4-6-7-5 4-13 6-23 5l-1 2Z" fill="#1d2730" />
+      <path d="M48 36c1-8 5-13 12-14 7-1 13 3 16 10-4-4-8-6-13-6-6 0-10 3-15 10Z" fill="#2b3540" opacity=".55" />
+      <path d="M51 39h4M65 39h4" stroke="#26323c" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="53" cy="40" r="1" fill="#1b252e" />
+      <circle cx="67" cy="40" r="1" fill="#1b252e" />
+      <path d="M60 40v5l2 1" fill="none" stroke="#bd7c61" strokeWidth="1" strokeLinecap="round" />
+      <path d="M55 49c3 2 7 2 10 0" fill="none" stroke="#a85f5c" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M49 35c-2 0-3 2-2 5M71 35c2 0 3 2 2 5" fill="none" stroke="#d99a76" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -69,17 +96,19 @@ export function QueteIcon() {
 
 export function AppLoader({ title, subtitle }) {
   return (
-    <div className="loading-screen">
+    <div className="loading-screen" role="status" aria-live="polite" aria-busy="true">
       <div className="loader-card">
         <div className="loader-emblem" aria-hidden="true">
-          <span className="loader-ring loader-ring-a" />
-          <span className="loader-ring loader-ring-b" />
-          <LoaderAvatar />
+          <span className="loader-orbit"><i /></span>
+          <span className="loader-volunteer-frame">
+            <LoaderAvatar />
+          </span>
         </div>
         <div className="loader-copy">
-          <div className="panel-kicker">Youth Sector Hub</div>
+          <div className="loader-kicker"><span /> Youth Sector Hub</div>
           <h2>{title}</h2>
           <p>{subtitle}</p>
+          <div className="loader-progress" aria-hidden="true"><span /></div>
         </div>
       </div>
     </div>
@@ -158,13 +187,19 @@ export function LoginPage({ onLogin }) {
   });
   const [loginLoading, setLoginLoading] = useState(false);
   const [signupLoading, setSignupLoading] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [loginNotice, setLoginNotice] = useState('');
   const [signupError, setSignupError] = useState('');
+  const [forgotForm, setForgotForm] = useState({ username: '', birthdate: '', newPassword: '', confirmPassword: '' });
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
 
   const submitLogin = async (event) => {
     event.preventDefault();
     setLoginLoading(true);
     setLoginError('');
+    setLoginNotice('');
 
     try {
       const payload = await api('/api/auth/login', { method: 'POST', body: loginForm });
@@ -196,12 +231,43 @@ export function LoginPage({ onLogin }) {
     }
   };
 
+  const submitForgotPassword = async (event) => {
+    event.preventDefault();
+    setForgotLoading(true);
+    setForgotError('');
+    setForgotSuccess('');
+    if (forgotForm.newPassword !== forgotForm.confirmPassword) {
+      setForgotError('The new passwords do not match.');
+      setForgotLoading(false);
+      return;
+    }
+    try {
+      const payload = await api('/api/auth/forgot-password', {
+        method: 'POST',
+        body: {
+          username: forgotForm.username.trim(),
+          birthdate: forgotForm.birthdate,
+          newPassword: forgotForm.newPassword
+        }
+      });
+      setForgotSuccess(payload.message);
+      setLoginForm({ username: forgotForm.username.trim(), password: '' });
+      setLoginNotice(payload.message);
+      setMode('login');
+    } catch (err) {
+      setForgotError(err.message);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <div className="login-shell">
       <div className="login-backdrop" />
       <main className="login-grid">
         <section className="hero-panel">
-          <div className="hero-badge">Lebanese Red Cross</div>
+          <div className="login-brand"><div className="brand-mark brand-mark-large" aria-hidden="true"><span /></div><div><strong>Lebanese Red Cross</strong><span>Jbeil Youth Sector</span></div></div>
+          <div className="hero-badge">Internal operations portal</div>
           <h1>Red Cross Youth Sector Hub</h1>
           <p className="hero-copy">
             A central workspace for birthdays, blood drive operations, recruitment follow-up,
@@ -225,15 +291,42 @@ export function LoginPage({ onLogin }) {
         <section className="login-panel">
           <div className="panel-kicker">Secure Access</div>
           <div className="auth-mode-switch" role="tablist" aria-label="Authentication mode">
-            <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Log in</button>
-            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Sign up</button>
+            <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Log in</button>
+            <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Sign up</button>
           </div>
 
-          {mode === 'login' ? (
+          {mode === 'forgot' ? (
+            <>
+              <h2>Forgot your password?</h2>
+              <p>Verify your account using your username and birthday, then choose a new password.</p>
+              <form onSubmit={submitForgotPassword} className="grid-form auth-form auth-form-reset">
+                <label>
+                  Username
+                  <input value={forgotForm.username} onChange={(event) => setForgotForm({ ...forgotForm, username: event.target.value })} placeholder="Enter your username" required autoFocus />
+                </label>
+                <label>
+                  Birthday
+                  <BirthdatePicker value={forgotForm.birthdate} onChange={(birthdate) => setForgotForm({ ...forgotForm, birthdate })} />
+                </label>
+                <label>
+                  New password
+                  <input type="password" minLength="6" value={forgotForm.newPassword} onChange={(event) => setForgotForm({ ...forgotForm, newPassword: event.target.value })} placeholder="At least 6 characters" required />
+                </label>
+                <label>
+                  Confirm new password
+                  <input type="password" minLength="6" value={forgotForm.confirmPassword} onChange={(event) => setForgotForm({ ...forgotForm, confirmPassword: event.target.value })} placeholder="Repeat your new password" required />
+                </label>
+                {forgotError ? <div className="error-banner">{forgotError}</div> : null}
+                {forgotSuccess ? <div className="notice-banner">{forgotSuccess}</div> : null}
+                <button type="submit" disabled={forgotLoading || Boolean(forgotSuccess)}>{forgotLoading ? 'Updating password...' : 'Update Password'}</button>
+                <button type="button" className="secondary" onClick={() => { setMode('login'); setForgotError(''); }}>Back to login</button>
+              </form>
+            </>
+          ) : mode === 'login' ? (
             <>
               <h2>Sign in to Hub</h2>
               <p>Use your assigned username and password to access your role-specific dashboard and modules.</p>
-              <form onSubmit={submitLogin} className="grid-form">
+              <form onSubmit={submitLogin} className="grid-form auth-form auth-form-login">
                 <label>
                   Username
                   <input value={loginForm.username} onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })} placeholder="Enter your username" required />
@@ -243,8 +336,12 @@ export function LoginPage({ onLogin }) {
                   <input type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} placeholder="Enter your password" required />
                 </label>
                 {loginError ? <div className="error-banner">{loginError}</div> : null}
+                {loginNotice ? <div className="notice-banner">{loginNotice}</div> : null}
                 <button type="submit" disabled={loginLoading}>
                   {loginLoading ? 'Signing in...' : 'Log in'}
+                </button>
+                <button type="button" className="auth-text-button" onClick={() => { setForgotForm({ username: loginForm.username, birthdate: '', newPassword: '', confirmPassword: '' }); setForgotSuccess(''); setMode('forgot'); setLoginError(''); setLoginNotice(''); }}>
+                  Forgot password?
                 </button>
               </form>
             </>
@@ -252,7 +349,7 @@ export function LoginPage({ onLogin }) {
             <>
               <h2>Create your account</h2>
               <p>Register as a member or new recruit, save your birthday, and get access to the required modules automatically.</p>
-              <form onSubmit={submitSignup} className="grid-form">
+              <form onSubmit={submitSignup} className="grid-form auth-form auth-form-signup">
                 <label>
                   Full name
                   <input value={signupForm.displayName} onChange={(event) => setSignupForm({ ...signupForm, displayName: event.target.value })} placeholder="Enter your full name" required />
@@ -381,23 +478,31 @@ export function BloodDonorInterestPage({ form, onChange, onSubmit, saving, check
   );
 }
 
-export function MetricBarChart({ title, items }) {
-  const max = Math.max(...items.map((item) => item.value), 1);
+export function MetricBarChart({ title, description = 'Comparison based on the current filtered records.', items = [] }) {
+  const usableItems = items.filter((item) => Number(item.value) > 0);
+  const max = Math.max(...usableItems.map((item) => Number(item.value)), 1);
 
   return (
     <article className="chart-card">
-      <h3>{title}</h3>
-      <div className="chart-bars">
-        {items.map((item) => (
-          <div key={item.label} className="chart-row">
-            <span>{item.label}</span>
-            <div className="chart-track">
-              <div className="chart-fill" style={{ width: `${(item.value / max) * 100}%` }} />
-            </div>
-            <strong>{item.value}</strong>
-          </div>
-        ))}
+      <div className="chart-card-head">
+        <h3>{title}</h3>
+        <p>{description}</p>
       </div>
+      {usableItems.length ? (
+        <div className="chart-bars" role="img" aria-label={`${title}. ${description}`}>
+          {usableItems.map((item) => (
+            <div key={item.label} className="chart-row" title={`${item.label}: ${item.value}`}>
+              <span>{item.label}</span>
+              <div className="chart-track" aria-hidden="true">
+                <div className="chart-fill" style={{ width: `${(Number(item.value) / max) * 100}%` }} />
+              </div>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="chart-empty-state"><strong>No data available</strong><span>Records will appear here when data is available.</span></div>
+      )}
     </article>
   );
 }
@@ -856,39 +961,55 @@ export function UserRow({ user, onSave }) {
                   <strong>Section access</strong>
                   <span>Choose which parts of the workspace this user can open.</span>
                 </div>
-                <div className="module-access-options">
+                <div className="module-access-switches user-permission-switches">
                   {moduleAccessKeys.map((key) => (
-                    <label key={key} className="inline-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={draft.role === 'admin' ? true : Boolean(draft.moduleAccess?.[key])}
-                        disabled={draft.role === 'admin' || key === 'quete'}
-                        onChange={(event) => setDraft((current) => ({
-                          ...current,
-                          moduleAccess: {
-                            ...current.moduleAccess,
-                            [key]: event.target.checked
-                          }
-                        }))}
-                      />
-                      {moduleAccessLabels[key]}{key === 'quete' ? ' (Required)' : ''}
+                    <label key={key} className="switch-row permission-switch-row">
+                      <div>
+                        <strong>{moduleAccessLabels[key]}</strong>
+                        <span>{draft.role === 'admin'
+                          ? 'Always enabled for administrators.'
+                          : key === 'quete'
+                            ? 'Required for every account.'
+                            : `Allow this user to open ${moduleAccessLabels[key]}.`}</span>
+                      </div>
+                      <span className="switch-toggle">
+                        <input
+                          type="checkbox"
+                          checked={draft.role === 'admin' ? true : Boolean(draft.moduleAccess?.[key])}
+                          disabled={draft.role === 'admin' || key === 'quete'}
+                          onChange={(event) => setDraft((current) => ({
+                            ...current,
+                            moduleAccess: {
+                              ...current.moduleAccess,
+                              [key]: event.target.checked
+                            }
+                          }))}
+                        />
+                        <span className="switch-slider" />
+                      </span>
                     </label>
                   ))}
                 </div>
               </div>
               <div className="user-detail-footer">
-                <div>
-                  <label className="inline-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={draft.isQueteFocal}
-                      onChange={(event) => setDraft({ ...draft, isQueteFocal: event.target.checked })}
-                    />
-                    Quete focal
+                <div className="user-status-switches">
+                  <label className="status-switch-item">
+                    <span>Quete focal</span>
+                    <span className="switch-toggle">
+                      <input
+                        type="checkbox"
+                        checked={draft.isQueteFocal}
+                        onChange={(event) => setDraft({ ...draft, isQueteFocal: event.target.checked })}
+                      />
+                      <span className="switch-slider" />
+                    </span>
                   </label>
-                  <label className="inline-checkbox">
-                    <input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} />
-                    Active
+                  <label className="status-switch-item">
+                    <span>Active account</span>
+                    <span className="switch-toggle">
+                      <input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} />
+                      <span className="switch-slider" />
+                    </span>
                   </label>
                 </div>
                 <div className="user-detail-actions">

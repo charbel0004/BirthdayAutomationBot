@@ -333,7 +333,6 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
       </div>
       <section className="panel">
         <div className="section-head">
@@ -498,7 +497,6 @@ function QueteManagerLandingPage({ isAdmin, data, onNavigate, onBack }) {
           <h2>Quete Operations</h2>
           <p>Open the exact Quete workspace you need first, then manage details inside that page.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
       </div>
       <section className="module-grid blood-drive-module-grid admin-tools-module-grid">
         <ModuleCard

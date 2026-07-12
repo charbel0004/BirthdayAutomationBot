@@ -246,7 +246,6 @@ export function RecruitPresentationPage({ presentation, spinning, onSpin, onBook
           <p>Spin once to receive your topic, then reserve an available presentation time slot.</p>
         </div>
         <div className="top-actions">
-          <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
         </div>
       </div>
       {!recruit?.topic ? (
@@ -329,7 +328,6 @@ export function MemberPresentationPage({ presentation, scoreDraft, setScoreDraft
           <p>Review presenters, assigned topics, and the grading structure used by the admin team.</p>
         </div>
         <div className="top-actions">
-          <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
         </div>
       </div>
       <section className="panel">
@@ -437,7 +435,6 @@ export function AdminPresentationPage(props) {
         </div>
         <div className="top-actions">
           <PresentationYearFilter years={presentation.availableYears} value={selectedYear} onChange={onChangeYear} />
-          <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
         </div>
       </div>
       <section className="panel">

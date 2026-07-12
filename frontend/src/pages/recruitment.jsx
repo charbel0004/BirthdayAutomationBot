@@ -22,7 +22,6 @@ export function RecruitmentPage({ leads, publicFormUrl, onOpenRepository, onOpen
           <h2>Recruitment Operations</h2>
           <p>Track interested people from the QR intake form, review the repository, and manage recruitment follow-up separately from blood drive.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
       </div>
       <section className="module-grid blood-drive-module-grid">
         <ModuleCard
@@ -85,7 +84,6 @@ export function RecruitmentRepositoryPage({ filters, setFilters, leads, draft, s
           <h2>Interested People Repository</h2>
           <p>Keep the complete list of people who submitted the recruitment form before moving them through the call center.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Recruitment</button>
       </div>
       <section className="panel">
         <div className="section-head">
@@ -202,7 +200,6 @@ export function RecruitmentCallCenterPage({ filters, setFilters, leads, onSearch
           <h2>Recruitment Call Center</h2>
           <p>Call people who submitted interest through the QR form and keep a separate recruitment follow-up history.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Recruitment</button>
       </div>
       <section className="panel">
         <div className="call-center-guide">

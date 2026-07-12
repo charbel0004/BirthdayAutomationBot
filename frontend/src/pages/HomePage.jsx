@@ -12,22 +12,24 @@ import { formatDateOnlyLabel, formatTimeOnlyLabel } from '../lib/app';
 import { hasModuleAccess, pages } from '../lib/state';
 
 function AdminSummary({ summary }) {
+  const stats = [
+    { label: 'Team members', value: summary.totalUsers, tone: 'red' },
+    { label: 'New recruits', value: summary.totalNewRecruits, tone: 'blue' },
+    { label: 'Birthdays tracked', value: summary.totalBirthdays, tone: 'amber' },
+    { label: 'Donor records', value: summary.totalBloodDonors, tone: 'green' },
+    { label: 'Quete shifts', value: summary.totalQueteShifts, tone: 'violet' }
+  ];
+
   return (
-    <>
-      <section className="panel overview-panel">
-        <div className="overview-copy">
-          <h2>Central Overview</h2>
-          <p>This workspace keeps birthdays, blood donor records, presentation data, and user access in MongoDB while Telegram settings stay in the existing JSON file.</p>
-        </div>
-        <div className="stats-row">
-          <article className="stat-card"><span>Total users</span><strong>{summary.totalUsers}</strong></article>
-          <article className="stat-card"><span>New recruits</span><strong>{summary.totalNewRecruits}</strong></article>
-          <article className="stat-card"><span>Total birthdays</span><strong>{summary.totalBirthdays}</strong></article>
-          <article className="stat-card"><span>Blood donor records</span><strong>{summary.totalBloodDonors}</strong></article>
-          <article className="stat-card"><span>Quete shifts</span><strong>{summary.totalQueteShifts}</strong></article>
-        </div>
-      </section>
-    </>
+    <section className="overview-metrics" aria-label="Workspace overview">
+      {stats.map((stat) => (
+        <article className={`overview-metric metric-${stat.tone}`} key={stat.label}>
+          <span>{stat.label}</span>
+          <strong>{stat.value ?? 0}</strong>
+          <i aria-hidden="true" />
+        </article>
+      ))}
+    </section>
   );
 }
 
@@ -80,7 +82,6 @@ export default function HomePage(props) {
             <h2>Birthday Records</h2>
             <p>Create, update, and remove birthday records without loading the rest of the admin tools on the same page.</p>
           </div>
-          <button type="button" className="secondary" onClick={onBackToAdminHome}>Back to Admin Hub</button>
         </div>
         <AdminBirthdayPanel
           birthdays={birthdays}
@@ -104,7 +105,6 @@ export default function HomePage(props) {
             <h2>Users & Roles</h2>
             <p>Create accounts, control module access, and update Quete focal permissions from one dedicated page.</p>
           </div>
-          <button type="button" className="secondary" onClick={onBackToAdminHome}>Back to Admin Hub</button>
         </div>
         <AdminUsersPanel
           users={users}
@@ -126,7 +126,6 @@ export default function HomePage(props) {
             <h2>Telegram Settings</h2>
             <p>Adjust notification delivery settings on a separate page instead of keeping them open in the dashboard.</p>
           </div>
-          <button type="button" className="secondary" onClick={onBackToAdminHome}>Back to Admin Hub</button>
         </div>
         <TelegramSettingsPanel
           settings={settings}
@@ -139,6 +138,30 @@ export default function HomePage(props) {
 
   return (
     <>
+      <section className="home-page-overview">
+        <div>
+          <div className="panel-kicker">{isAdmin ? 'Administration workspace' : 'Member workspace'}</div>
+          <h2>{isAdmin ? 'Operations Overview' : `Welcome, ${me.user.displayName || me.user.username}`}</h2>
+          <p>{isAdmin
+            ? 'Monitor activity across the Youth Sector Hub, open operational modules, and manage the tools available to your teams.'
+            : 'Access your available services, review your participation, and continue current Youth Sector activities.'}</p>
+          <div className="overview-status-row" aria-label="Workspace status">
+            <span><i className="status-dot" aria-hidden="true" />All systems ready</span>
+            <span>{isAdmin ? `${me.summary?.totalUsers ?? 0} people in your workspace` : 'Your services are ready'}</span>
+          </div>
+        </div>
+        <div className="overview-emblem" aria-hidden="true"><span /></div>
+      </section>
+
+      {isAdmin ? <AdminSummary summary={me.summary} /> : null}
+
+      <div className="dashboard-section-heading">
+        <div>
+          <div className="section-label">Your workspace</div>
+          <h2>Services & operations</h2>
+          <p>Everything you have access to, organized in one place.</p>
+        </div>
+      </div>
       <section className={`module-grid ${isAdmin ? 'admin-home-grid' : 'member-home-grid'}`.trim()}>
         {!isAdmin ? (
           <BirthdayModuleCard
@@ -219,12 +242,12 @@ export default function HomePage(props) {
 
       {isAdmin ? (
         <>
-          <AdminSummary summary={me.summary} />
           <section className="panel">
             <div className="section-head">
               <div>
-                <h2>Admin Tools</h2>
-                <p>Open each admin area the same way you open other modules, then handle the detailed work inside that page.</p>
+                <div className="section-label">Administration</div>
+                <h2>Workspace management</h2>
+                <p>Manage people, birthday records, permissions, and notification delivery.</p>
               </div>
             </div>
             <div className="module-grid blood-drive-module-grid admin-tools-module-grid">

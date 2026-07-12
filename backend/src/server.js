@@ -1244,6 +1244,51 @@ app.post('/api/auth/login', async (req, res) => {
   });
 });
 
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const birthdate = String(req.body?.birthdate || '').trim();
+  const newPassword = String(req.body?.newPassword || '');
+
+  if (!username || !birthdate || !newPassword) {
+    return res.status(400).json({ error: 'Please enter your username, birthday, and new password.' });
+  }
+  if (!isValidBirthdate(birthdate)) {
+    return res.status(400).json({ error: 'Please enter a valid birthday.' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'Your new password must contain at least 6 characters.' });
+  }
+
+  try {
+    const user = await usersCollection().findOne({
+      username: { $regex: `^${escapeRegex(username)}$`, $options: 'i' },
+      active: { $ne: false }
+    });
+    const matchingBirthday = user
+      ? await birthdaysCollection().findOne({
+          birthdate,
+          $or: [
+            { userId: user._id },
+            { userId: String(user._id) },
+            { normalizedName: normalizeName(user.displayName || user.username) }
+          ]
+        })
+      : null;
+
+    if (!user || !matchingBirthday) {
+      return res.status(400).json({ error: 'The username and birthday do not match our records.' });
+    }
+
+    await usersCollection().updateOne(
+      { _id: user._id },
+      { $set: { passwordHash: await bcrypt.hash(newPassword, 10), updatedAt: now() } }
+    );
+    return res.json({ message: 'Your password was updated successfully. You can now log in.' });
+  } catch (error) {
+    return res.status(500).json({ error: 'Unable to reset your password right now.' });
+  }
+});
+
 app.post('/api/auth/signup', async (req, res) => {
   const { username, password, displayName, birthdate, role = 'member' } = req.body || {};
 

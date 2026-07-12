@@ -12,7 +12,6 @@ export function BloodDrivePage({ donorStats, publicFormUrl, onOpenCollection, on
           <h2>Blood Drive Operations</h2>
           <p>Collect donor data, review eligibility, and monitor donor coverage across locations.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
       </div>
       <section className="module-grid blood-drive-module-grid">
         <ModuleCard title="Blood Drive Data Collection" description="Open the donor form and submit a blood donor record." icon={<BloodDriveIcon />} onClick={onOpenCollection} />
@@ -72,7 +71,6 @@ export function DonationLocationsPage({ locations, draft, setDraft, onCreateLoca
           <h2>Donation Locations</h2>
           <p>Manage which collection-day places are available in the active location dropdown.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Blood Drive</button>
       </div>
       <section className="panel">
         <div className="section-head">
@@ -160,7 +158,6 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
           <h2>Blood Donors Repository</h2>
           <p>Add interested donors for future follow-up, review the repository, and reuse existing records during collection day.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Blood Drive</button>
       </div>
       <section className="panel">
         <div className="section-head">
@@ -290,7 +287,6 @@ export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDono
           <h2>Eligible Donor Call Center</h2>
           <p>Work through eligible donors, capture contact status, and record willingness to donate.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Blood Drive</button>
       </div>
       <section className="panel">
         <div className="section-head">

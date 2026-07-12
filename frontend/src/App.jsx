@@ -47,6 +47,28 @@ const PresentationRouter = lazy(() => import('./pages/PresentationRouter'));
 const QueteRouter = lazy(() => import('./pages/QueteRouter'));
 const CertificateGeneratorPage = lazy(() => import('./pages/CertificateGeneratorPage'));
 
+const breadcrumbConfig = {
+  [pages.home]: { label: 'Home' },
+  [pages.adminBirthdays]: { label: 'Birthday Records', parent: pages.home },
+  [pages.adminUsers]: { label: 'Users & Roles', parent: pages.home },
+  [pages.adminSettings]: { label: 'Telegram Settings', parent: pages.home },
+  [pages.bloodDrive]: { label: 'Blood Drive', parent: pages.home },
+  [pages.eligibleDonors]: { label: 'Eligible Donors', parent: pages.bloodDrive },
+  [pages.repository]: { label: 'Donor Records', parent: pages.bloodDrive },
+  [pages.donationLocations]: { label: 'Donation Locations', parent: pages.bloodDrive },
+  [pages.recruitment]: { label: 'Recruitment', parent: pages.home },
+  [pages.recruitmentRepository]: { label: 'Interested People', parent: pages.recruitment },
+  [pages.recruitmentCallCenter]: { label: 'Call Center', parent: pages.recruitment },
+  [pages.presentations]: { label: 'Presentations', parent: pages.home },
+  [pages.quete]: { label: 'Quete', parent: pages.home },
+  [pages.queteBoard]: { label: 'Shift Board', parent: pages.quete },
+  [pages.queteMembers]: { label: 'Members', parent: pages.quete },
+  [pages.queteShiftSetup]: { label: 'Shift Setup', parent: pages.quete },
+  [pages.queteReport]: { label: 'Reports', parent: pages.quete },
+  [pages.queteFocals]: { label: 'Focals', parent: pages.quete },
+  [pages.certificateGenerator]: { label: 'Certificate Generator', parent: pages.home }
+};
+
 export default function App() {
   const bloodDriveRefreshMs = 20000;
   const emptyRepositoryDonor = { firstName: '', lastName: '', dateOfBirth: '', phoneNumber: '', notes: '' };
@@ -380,6 +402,10 @@ export default function App() {
     if (window.location.hash !== nextHash) {
       window.location.hash = nextHash;
     }
+  }, [page]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [page]);
 
   useEffect(() => {
@@ -1348,6 +1374,33 @@ export default function App() {
 
   const isAdmin = me.user.role === 'admin';
   const memberBirthday = birthdays[0] || null;
+  const primaryNavigation = [
+    { page: pages.home, label: 'Overview', visible: true },
+    { page: pages.bloodDrive, label: 'Blood Drive', visible: canAccessBloodDrive },
+    { page: pages.recruitment, label: 'Recruitment', visible: canAccessRecruitment },
+    { page: pages.presentations, label: 'Presentations', visible: canAccessPresentations },
+    { page: pages.quete, label: 'Quete', visible: canAccessQuete },
+    { page: pages.certificateGenerator, label: 'Certificates', visible: canAccessCertificateGenerator }
+  ].filter((item) => item.visible);
+  const activePrimaryPage = isBloodDrivePage
+    ? pages.bloodDrive
+    : isRecruitmentPage
+      ? pages.recruitment
+      : isQuetePage
+        ? pages.quete
+        : page;
+  const userInitials = (me.user.displayName || me.user.username || 'Member')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+  const breadcrumbItems = [];
+  let breadcrumbPage = page;
+  while (breadcrumbConfig[breadcrumbPage]) {
+    breadcrumbItems.unshift({ page: breadcrumbPage, ...breadcrumbConfig[breadcrumbPage] });
+    breadcrumbPage = breadcrumbConfig[breadcrumbPage].parent;
+  }
 
   const renderPage = () => {
     if (page === pages.certificateGenerator && canAccessCertificateGenerator) {
@@ -1537,28 +1590,66 @@ export default function App() {
       </div>
       <div className="dashboard-container">
         <header className="dashboard-hero">
-          <div>
-            <div className="hero-badge hero-badge-small">Youth Sector Hub</div>
-            <h1>Red Cross Youth Sector Hub</h1>
-            <p>Logged in as <strong>{me.user.displayName}</strong> ({me.user.role}).</p>
+          <div className="dashboard-brand">
+            <div className="brand-mark" aria-hidden="true"><span /></div>
+            <div>
+              <div className="dashboard-eyebrow">Lebanese Red Cross · Jbeil</div>
+              <h1>Youth Sector Hub</h1>
+              <p>Operations and member services workspace</p>
+            </div>
           </div>
-          <div className="top-actions">
-            {page !== pages.home ? <button type="button" className="secondary" onClick={() => setPage(pages.home)}>Back to Hub</button> : null}
-            {isAdmin ? <button type="button" className="secondary" onClick={runBirthdayNow}>Run Birthday Check</button> : null}
-            <button type="button" onClick={handleLogout}>Log out</button>
+          <nav className="primary-navigation" aria-label="Primary navigation">
+            {primaryNavigation.map((item) => (
+              <button
+                key={item.page}
+                type="button"
+                className={activePrimaryPage === item.page ? 'active' : ''}
+                aria-current={activePrimaryPage === item.page ? 'page' : undefined}
+                onClick={() => setPage(item.page)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <div className="dashboard-account">
+            <div className="account-avatar" aria-hidden="true">{userInitials}</div>
+            <div className="account-copy">
+              <strong>{me.user.displayName}</strong>
+              <span>{me.user.role}</span>
+            </div>
+            <div className="top-actions">
+              {isAdmin ? <button type="button" className="secondary" onClick={runBirthdayNow}>Run Birthday Check</button> : null}
+              <button type="button" onClick={handleLogout}>Log out</button>
+            </div>
           </div>
         </header>
 
+        <main className="workspace-main">
+        <nav className="app-breadcrumbs" aria-label="Breadcrumb">
+          {breadcrumbItems.map((item, index) => {
+            const isCurrent = index === breadcrumbItems.length - 1;
+            return (
+              <span key={item.page} className="breadcrumb-item">
+                {index > 0 ? <span className="breadcrumb-separator" aria-hidden="true">/</span> : null}
+                {isCurrent ? (
+                  <span className="breadcrumb-current" aria-current="page">{item.label}</span>
+                ) : (
+                  <button type="button" onClick={() => setPage(item.page)}>{item.label}</button>
+                )}
+              </span>
+            );
+          })}
+        </nav>
         <Suspense
-          fallback={
-            <AppLoader
-              title="Opening workspace section"
-              subtitle="Loading the selected page and preparing its tools."
-            />
-          }
-        >
-          {renderPage()}
-        </Suspense>
+            fallback={
+              <AppLoader
+                title="Opening workspace section"
+                subtitle="Loading the selected page and preparing its tools."
+              />
+            }
+          >
+            {renderPage()}
+          </Suspense>
 
         <BirthdayOverlay
           isOpen={!isAdmin && !memberBirthday && birthdayOverlayOpen}
@@ -1592,6 +1683,7 @@ export default function App() {
           saving={bloodDriveSaving}
           error={bloodDriveError}
         />
+        </main>
       </div>
     </div>
   );

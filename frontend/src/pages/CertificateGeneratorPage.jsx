@@ -43,7 +43,6 @@ export default function CertificateGeneratorPage({ onBack, onNotice }) {
           <h2>Certificate Generator</h2>
           <p>Upload the participant list, enter the shared program details, and download one combined PDF.</p>
         </div>
-        <button type="button" className="secondary" onClick={onBack}>Back to Hub</button>
       </div>
 
       <section className="panel certificate-generator-panel">
