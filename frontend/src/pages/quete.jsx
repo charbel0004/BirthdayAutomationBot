@@ -667,7 +667,14 @@ function QueteShiftSetupPanel({ draft, setDraft, shifts, onSaveShift, onStartEdi
         </label>
         <label>
           Needed members
-          <input type="number" min="1" value={draft.capacity} onChange={(event) => setDraft((current) => ({ ...current, capacity: Number(event.target.value) || 1 }))} required />
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={draft.capacity}
+            onChange={(event) => setDraft((current) => ({ ...current, capacity: event.target.value }))}
+            required
+          />
         </label>
         <label>
           Location

@@ -57,6 +57,7 @@ export default function HomePage(props) {
     onOpenRecruitment,
     onOpenPresentations,
     onOpenQuete,
+    onOpenCertificateGenerator,
     onOpenAdminBirthdays,
     onOpenAdminUsers,
     onOpenAdminSettings,
@@ -68,6 +69,7 @@ export default function HomePage(props) {
   const canAccessRecruitment = hasModuleAccess(me.user, 'recruitment');
   const canAccessPresentations = hasModuleAccess(me.user, 'presentations');
   const canAccessQuete = hasModuleAccess(me.user, 'quete');
+  const canAccessCertificateGenerator = hasModuleAccess(me.user, 'certificateGenerator');
 
   if (isAdmin && page === pages.adminBirthdays) {
     return (
@@ -173,6 +175,14 @@ export default function HomePage(props) {
             shifts={queteData.shifts}
             myReservations={queteData.myReservations}
             onOpen={onOpenQuete}
+          />
+        ) : null}
+        {canAccessCertificateGenerator ? (
+          <ModuleCard
+            title="Certificate Generator"
+            description="Upload an Excel participant list and download the completed certificate PDF."
+            icon={<div className="module-icon-text">🏅</div>}
+            onClick={onOpenCertificateGenerator}
           />
         ) : null}
       </section>

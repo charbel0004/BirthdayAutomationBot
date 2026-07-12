@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const XLSX = require('xlsx');
+const multer = require('multer');
 
 const { authMiddleware, requireRole, signAuthToken } = require('./auth');
 const {
@@ -26,6 +27,7 @@ const {
 const { startBirthdayScheduler, runBirthdayCheck } = require('./scheduler');
 const { readTelegramSettings, writeTelegramSettings } = require('./settings');
 const { dataFile } = require('./store');
+const { generateCertificates } = require('./certificate-generator');
 
 const PORT = Number(process.env.PORT || 4000);
 const app = express();
@@ -47,6 +49,7 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 app.use(cors({
+  exposedHeaders: ['Content-Disposition', 'X-Certificate-Count'],
   origin(origin, callback) {
     if (!origin || allowedOrigins.has(origin)) {
       return callback(null, true);
@@ -58,7 +61,11 @@ app.use(cors({
 app.use(express.json());
 
 const USER_ROLES = ['admin', 'member', 'new recruit'];
-const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations', 'quete'];
+const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations', 'quete', 'certificateGenerator'];
+const certificateUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }
+});
 const QUETE_SHIFT_TYPES = new Set(['morning', 'afternoon']);
 const QUETE_TIMEZONE = process.env.QUETE_TIMEZONE || process.env.BOT_TIMEZONE || 'Asia/Beirut';
 const QUETE_SHIFT_CATEGORIES = {
@@ -286,7 +293,8 @@ function createDefaultModuleAccess(role = 'member') {
       bloodDrive: true,
       recruitment: true,
       presentations: true,
-      quete: true
+      quete: true,
+      certificateGenerator: true
     };
   }
 
@@ -295,7 +303,8 @@ function createDefaultModuleAccess(role = 'member') {
       bloodDrive: false,
       recruitment: false,
       presentations: true,
-      quete: true
+      quete: true,
+      certificateGenerator: false
     };
   }
 
@@ -303,7 +312,8 @@ function createDefaultModuleAccess(role = 'member') {
     bloodDrive: true,
     recruitment: true,
     presentations: true,
-    quete: true
+    quete: true,
+    certificateGenerator: false
   };
 }
 
@@ -326,7 +336,8 @@ function createSignupModuleAccess(role = 'member') {
       bloodDrive: false,
       recruitment: false,
       presentations: true,
-      quete: true
+      quete: true,
+      certificateGenerator: false
     };
   }
 
@@ -1424,6 +1435,37 @@ app.get('/api/me', async (req, res) => {
       birthdayChatId: telegram.birthdayChatId
     },
     ownBirthdays: ownBirthdays.map(sanitizeBirthday)
+  });
+});
+
+app.post('/api/certificate-generator/generate', requireModuleAccess('certificateGenerator'), (req, res) => {
+  certificateUpload.single('excel')(req, res, async (uploadError) => {
+    if (uploadError) {
+      const message = uploadError.code === 'LIMIT_FILE_SIZE'
+        ? 'The Excel file must be smaller than 10 MB.'
+        : 'The Excel file could not be uploaded.';
+      return res.status(400).json({ error: message });
+    }
+
+    try {
+      const programName = String(req.body?.programName || '').trim();
+      const certificateDate = String(req.body?.certificateDate || '').trim();
+      if (!req.file) return res.status(400).json({ error: 'Please upload an Excel file.' });
+      if (!programName) return res.status(400).json({ error: 'Please enter the program name.' });
+      if (!isValidDateKey(certificateDate)) return res.status(400).json({ error: 'Please choose a valid certificate date.' });
+      if (!/\.(xlsx|xls)$/i.test(req.file.originalname || '')) {
+        return res.status(400).json({ error: 'Please upload an .xlsx or .xls Excel file.' });
+      }
+
+      const result = await generateCertificates({ excelBuffer: req.file.buffer, programName, certificateDate });
+      const safeProgram = programName.replace(/[^a-z0-9 _-]+/gi, '').trim().replace(/\s+/g, '-') || 'program';
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="certificates-${safeProgram}.pdf"`);
+      res.setHeader('X-Certificate-Count', String(result.count));
+      return res.send(Buffer.from(result.bytes));
+    } catch (error) {
+      return res.status(400).json({ error: error.message || 'The certificates could not be generated.' });
+    }
   });
 });
 

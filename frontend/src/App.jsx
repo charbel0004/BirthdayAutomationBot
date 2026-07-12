@@ -45,6 +45,7 @@ const BloodDriveRouter = lazy(() => import('./pages/BloodDriveRouter'));
 const RecruitmentRouter = lazy(() => import('./pages/RecruitmentRouter'));
 const PresentationRouter = lazy(() => import('./pages/PresentationRouter'));
 const QueteRouter = lazy(() => import('./pages/QueteRouter'));
+const CertificateGeneratorPage = lazy(() => import('./pages/CertificateGeneratorPage'));
 
 export default function App() {
   const bloodDriveRefreshMs = 20000;
@@ -167,6 +168,7 @@ export default function App() {
   const canAccessRecruitment = hasModuleAccess(me?.user, 'recruitment');
   const canAccessPresentations = hasModuleAccess(me?.user, 'presentations');
   const canAccessQuete = hasModuleAccess(me?.user, 'quete');
+  const canAccessCertificateGenerator = hasModuleAccess(me?.user, 'certificateGenerator');
 
   const loadData = async () => {
     setLoading(true);
@@ -389,7 +391,8 @@ export default function App() {
       (isBloodDrivePage && !canAccessBloodDrive) ||
       (isRecruitmentPage && !canAccessRecruitment) ||
       (isPresentationPage && !canAccessPresentations) ||
-      (isQuetePage && !canAccessQuete)
+      (isQuetePage && !canAccessQuete) ||
+      (page === pages.certificateGenerator && !canAccessCertificateGenerator)
     ) {
       setPage(pages.home);
       return;
@@ -401,7 +404,7 @@ export default function App() {
     if (isQuetePage && canAccessQuete) {
       refreshQuete().catch((err) => setError(err.message));
     }
-  }, [token, me, isBloodDrivePage, isRecruitmentPage, isPresentationPage, isQuetePage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, canAccessQuete, presentationYear]);
+  }, [token, me, page, isBloodDrivePage, isRecruitmentPage, isPresentationPage, isQuetePage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, canAccessQuete, canAccessCertificateGenerator, presentationYear]);
 
   useEffect(() => {
     if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage)) {
@@ -1347,6 +1350,15 @@ export default function App() {
   const memberBirthday = birthdays[0] || null;
 
   const renderPage = () => {
+    if (page === pages.certificateGenerator && canAccessCertificateGenerator) {
+      return (
+        <CertificateGeneratorPage
+          onBack={() => setPage(pages.home)}
+          onNotice={showNotice}
+        />
+      );
+    }
+
     if (isBloodDrivePage && canAccessBloodDrive) {
       return (
         <BloodDriveRouter
@@ -1508,6 +1520,7 @@ export default function App() {
         onOpenRecruitment={() => setPage(pages.recruitment)}
         onOpenPresentations={() => setPage(pages.presentations)}
         onOpenQuete={() => setPage(pages.quete)}
+        onOpenCertificateGenerator={() => setPage(pages.certificateGenerator)}
         onOpenAdminBirthdays={() => setPage(pages.adminBirthdays)}
         onOpenAdminUsers={() => setPage(pages.adminUsers)}
         onOpenAdminSettings={() => setPage(pages.adminSettings)}

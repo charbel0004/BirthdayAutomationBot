@@ -201,6 +201,25 @@ export async function downloadFile(path, { token, filename = 'download' } = {}) 
   window.URL.revokeObjectURL(objectUrl);
 }
 
+export async function generateCertificatePdf(formData, { token } = {}) {
+  const response = await fetch(resolveApiUrl('/api/certificate-generator/generate'), {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || 'The certificates could not be generated.');
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'certificates.pdf',
+    count: Number(response.headers.get('X-Certificate-Count') || 0)
+  };
+}
+
 export function splitBirthdate(value) {
   if (!value || !value.includes('-')) {
     return { month: '', day: '' };

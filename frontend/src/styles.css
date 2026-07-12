@@ -1405,6 +1405,60 @@ label {
   min-width: 220px;
 }
 
+.certificate-generator-panel {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.certificate-generator-form {
+  display: grid;
+  gap: 22px;
+}
+
+.certificate-upload-zone {
+  min-height: 210px;
+  border: 2px dashed rgba(207, 36, 46, 0.35);
+  border-radius: 22px;
+  background: rgba(207, 36, 46, 0.035);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.certificate-upload-zone input { position: absolute; opacity: 0; pointer-events: none; }
+.certificate-upload-zone strong { font-size: 1.08rem; color: var(--ink); }
+.certificate-upload-zone > span:last-child { color: var(--muted); max-width: 540px; }
+.certificate-upload-icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: var(--primary); color: white; font-size: 1.7rem; }
+
+.certificate-fields {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 16px;
+}
+
+.certificate-fields label { display: grid; gap: 8px; font-weight: 700; }
+
+.certificate-generator-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 4px;
+}
+
+.certificate-generator-actions > div { display: grid; gap: 4px; }
+.certificate-generator-actions span { color: var(--muted); font-size: 0.92rem; }
+
+@media (max-width: 700px) {
+  .certificate-fields { grid-template-columns: 1fr; }
+  .certificate-generator-actions { align-items: stretch; flex-direction: column; }
+}
+
 .module-access-editor > span {
   font-size: 0.78rem;
   font-weight: 700;

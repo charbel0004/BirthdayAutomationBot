@@ -3,6 +3,7 @@ export const pages = {
   adminBirthdays: 'admin-birthdays',
   adminUsers: 'admin-users',
   adminSettings: 'admin-settings',
+  certificateGenerator: 'certificate-generator',
   bloodDrive: 'blood-drive',
   eligibleDonors: 'eligible-donors',
   repository: 'repository',
@@ -21,13 +22,14 @@ export const pages = {
   queteFocals: 'quete-focals'
 };
 
-export const moduleAccessKeys = ['bloodDrive', 'recruitment', 'presentations', 'quete'];
+export const moduleAccessKeys = ['bloodDrive', 'recruitment', 'presentations', 'quete', 'certificateGenerator'];
 
 export const moduleAccessLabels = {
   bloodDrive: 'Blood Drive',
   recruitment: 'Recruitment',
   presentations: 'Presentations',
-  quete: 'Quete'
+  quete: 'Quete',
+  certificateGenerator: 'Certificate Generator'
 };
 
 const routeToPage = {
@@ -49,6 +51,7 @@ const routeToPage = {
   'admin-birthdays': pages.adminBirthdays,
   'admin-users': pages.adminUsers,
   'admin-settings': pages.adminSettings,
+  'certificate-generator': pages.certificateGenerator,
   'quete-shift-setup': pages.queteShiftSetup,
   'quete-report': pages.queteReport,
   'quete-focals': pages.queteFocals
@@ -124,7 +127,8 @@ export function createDefaultModuleAccess(role = 'member') {
       bloodDrive: true,
       recruitment: true,
       presentations: true,
-      quete: true
+      quete: true,
+      certificateGenerator: true
     };
   }
 
@@ -133,7 +137,8 @@ export function createDefaultModuleAccess(role = 'member') {
       bloodDrive: false,
       recruitment: false,
       presentations: true,
-      quete: true
+      quete: true,
+      certificateGenerator: false
     };
   }
 
@@ -141,7 +146,8 @@ export function createDefaultModuleAccess(role = 'member') {
     bloodDrive: true,
     recruitment: true,
     presentations: true,
-    quete: true
+    quete: true,
+    certificateGenerator: false
   };
 }
 
