@@ -3802,3 +3802,36 @@ textarea:focus-visible {
   .quete-report-actions label { width: 100%; min-width: 0; }
   .quete-report-actions button { width: 100%; }
 }
+
+.report-zero-summary {
+  min-width: 120px;
+  padding: 12px 15px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid #ead9c6;
+  border-radius: 13px;
+  background: #fff8ed;
+  text-align: right;
+}
+.participation-report-actions { display: flex; align-items: flex-end; gap: 10px; }
+.participation-report-actions > button { min-height: 50px; white-space: nowrap; }
+.report-zero-summary strong { color: #9a5c12; font-size: 1.45rem; line-height: 1; }
+.report-zero-summary span { color: #80684d; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.participation-zero-row { background: rgba(255,248,237,.55); }
+.participation-zero-row:hover { background: #fff7e9; }
+.participation-status {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.participation-status.active { color: #216246; background: #e7f5ed; }
+.participation-status.inactive { color: #8a5a1f; background: #fff0d8; }
+
+@media (max-width: 700px) {
+  .participation-report-actions { width: 100%; flex-direction: column; align-items: stretch; }
+  .report-zero-summary { width: 100%; text-align: left; }
+  .participation-report-actions > button { width: 100%; }
+}

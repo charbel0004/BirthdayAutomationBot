@@ -917,7 +917,7 @@ async function buildQueteDashboard(account) {
     return accumulator;
   }, {});
   const participationReport = users
-    .filter((user) => ['admin', 'member', 'new recruit'].includes(user.role))
+    .filter((user) => user.active !== false && ['admin', 'member', 'new recruit'].includes(user.role))
     .map((user) => {
       const userReservations = reservationsByUserId.get(String(user._id)) || [];
       const detailedShifts = userReservations
@@ -939,7 +939,6 @@ async function buildQueteDashboard(account) {
         weightedTotal: Number(weightedTotal.toFixed(2))
       };
     })
-    .filter((entry) => entry.reservationsCount > 0)
     .sort((a, b) => b.weightedTotal - a.weightedTotal || a.user.displayName.localeCompare(b.user.displayName));
   const myParticipation =
     participationReport.find((entry) => entry.user.id === String(account._id)) || {
@@ -2332,9 +2331,35 @@ app.get('/api/quete/dashboard', requireQueteAccess, async (req, res) => {
   }
 });
 
-app.get('/api/quete/report/export', requireRole('admin'), requireQueteAccess, async (req, res) => {
+app.get('/api/quete/report/export', requireQueteAccess, async (req, res) => {
   try {
+    if (!isQueteManager(req.account)) {
+      return res.status(403).json({ error: 'Only admins and Quete focals can export participation reports.' });
+    }
     const dashboard = await buildQueteDashboard(req.account);
+    const reportType = String(req.query.type || '').trim();
+    if (reportType === 'non-participants') {
+      const nonParticipantRows = (dashboard.admin?.report || [])
+        .filter((entry) => entry.user.role !== 'admin' && Number(entry.reservationsCount || 0) === 0)
+        .map((entry) => ({
+          Name: entry.user.displayName,
+          Username: entry.user.username,
+          Role: entry.user.role,
+          'Total shifts taken': 0,
+          Status: 'No shifts yet'
+        }))
+        .sort((left, right) => left.Name.localeCompare(right.Name));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(nonParticipantRows.length ? nonParticipantRows : [{ Status: 'Every active member has participated.' }]),
+        'No Participation'
+      );
+      const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="quete-members-with-no-participation.xlsx"');
+      return res.send(workbookBuffer);
+    }
     const requestedMonth = String(req.query.month || '').trim();
     if (requestedMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) {
       return res.status(400).json({ error: 'Report month must use the YYYY-MM format.' });
@@ -2345,7 +2370,19 @@ app.get('/api/quete/report/export', requireRole('admin'), requireQueteAccess, as
       : allShifts;
     const totalCapacity = reportShifts.reduce((sum, shift) => sum + Number(shift.capacity || 0), 0);
     const filledSeats = reportShifts.reduce((sum, shift) => sum + Number(shift.reservedCount || 0), 0);
-    const participantSummary = new Map();
+    const participantSummary = new Map(
+      (dashboard.admin?.report || []).map((entry) => [entry.user.id, {
+        Name: entry.user.displayName,
+        Role: entry.user.role,
+        'Road shifts': 0,
+        'Restaurant shifts': 0,
+        'Church shifts': 0,
+        'Church masses': 0,
+        'Total shifts taken': 0,
+        'Weighted total': 0,
+        Status: 'No shifts yet'
+      }])
+    );
     const signupRows = [];
 
     reportShifts.forEach((shift) => {
@@ -2371,6 +2408,7 @@ app.get('/api/quete/report/export', requireRole('admin'), requireQueteAccess, as
         if (categoryColumn) current[categoryColumn] += 1;
         current['Total shifts taken'] += 1;
         current['Weighted total'] = Number((current['Weighted total'] + Number(shift.shiftValue || 1)).toFixed(2));
+        current.Status = 'Participated';
         participantSummary.set(userKey, current);
         signupRows.push({
           Date: shift.date,

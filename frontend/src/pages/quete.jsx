@@ -316,7 +316,7 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
     { label: 'New recruits', value: data.stats.recruitParticipants || 0 }
   ]), [data.stats]);
   const topParticipantItems = useMemo(
-    () => ((data.admin?.report || []).slice(0, 6).map((entry) => ({
+    () => ((data.admin?.report || []).filter((entry) => entry.reservationsCount > 0).slice(0, 6).map((entry) => ({
       label: entry.user.displayName,
       value: entry.weightedTotal
     }))),
@@ -533,14 +533,12 @@ function QueteManagerLandingPage({ isAdmin, data, onNavigate, onBack }) {
           icon={<div className="module-icon-text">🗓</div>}
           onClick={() => onNavigate(pages.queteShiftSetup)}
         />
-        {isAdmin ? (
-          <ModuleCard
-            title="Participation Report"
-            description="Review weighted participation totals and download the Excel report from a dedicated page."
-            icon={<div className="module-icon-text">📊</div>}
-            onClick={() => onNavigate(pages.queteReport)}
-          />
-        ) : null}
+        <ModuleCard
+          title="Participation Report"
+          description="Review participation, identify people with no shifts, and download monthly Excel reports."
+          icon={<div className="module-icon-text">📊</div>}
+          onClick={() => onNavigate(pages.queteReport)}
+        />
         {isAdmin ? (
           <ModuleCard
             title="Quete Focals"
@@ -766,6 +764,10 @@ function QueteReportPanel({ data, onExportReport }) {
     reserved: totals.reserved + Number(shift.reservedCount || 0),
     available: totals.available + Number(shift.availableSeats || 0)
   }), { capacity: 0, reserved: 0, available: 0 }), [monthlyShifts]);
+  const participationEntries = data.admin?.report || [];
+  const noShiftCount = participationEntries.filter(
+    (entry) => entry.user.role !== 'admin' && Number(entry.reservationsCount || 0) === 0
+  ).length;
 
   return (
     <>
@@ -818,9 +820,18 @@ function QueteReportPanel({ data, onExportReport }) {
       </section>
 
       <section className="panel">
-        <div className="section-head"><div><h2>All-time participation</h2><p>Weighted totals use road/church = 1 and restaurant/church mass = 0.5.</p></div></div>
-        <div className="table-wrap quete-table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Road</th><th>Restaurant</th><th>Church</th><th>Church masses</th><th>Total shifts</th><th>Weighted total</th></tr></thead><tbody>
-          {(data.admin?.report || []).length ? data.admin.report.map((entry) => <tr key={entry.user.id}><td>{entry.user.displayName}</td><td>{entry.user.role}</td><td>{entry.roadShifts}</td><td>{entry.restaurantShifts}</td><td>{entry.churchShifts}</td><td>{entry.churchMassShifts}</td><td>{entry.reservationsCount}</td><td>{entry.weightedTotal}</td></tr>) : <tr><td colSpan="8"><div className="repository-empty-state"><strong>No participation recorded yet.</strong><span>Once users reserve shifts, their totals will appear here.</span></div></td></tr>}
+        <div className="section-head">
+          <div><div className="section-label">Team coverage</div><h2>All-time participation</h2><p>Everyone is included, including people who have not taken a shift yet.</p></div>
+          <div className="participation-report-actions">
+            <div className="report-zero-summary"><strong>{noShiftCount}</strong><span>No shifts yet</span></div>
+            <button type="button" className="secondary" onClick={() => onExportReport('', 'non-participants')} disabled={noShiftCount === 0}>Download Non-Participants</button>
+          </div>
+        </div>
+        <div className="table-wrap quete-table-wrap"><table><thead><tr><th>Name</th><th>Status</th><th>Role</th><th>Road</th><th>Restaurant</th><th>Church</th><th>Church masses</th><th>Total shifts</th><th>Weighted total</th></tr></thead><tbody>
+          {participationEntries.length ? participationEntries.map((entry) => {
+            const hasNoShifts = Number(entry.reservationsCount || 0) === 0;
+            return <tr key={entry.user.id} className={hasNoShifts ? 'participation-zero-row' : ''}><td>{entry.user.displayName}</td><td><span className={`participation-status ${hasNoShifts ? 'inactive' : 'active'}`}>{hasNoShifts ? 'No shifts yet' : 'Participated'}</span></td><td>{entry.user.role}</td><td>{entry.roadShifts}</td><td>{entry.restaurantShifts}</td><td>{entry.churchShifts}</td><td>{entry.churchMassShifts}</td><td>{entry.reservationsCount}</td><td>{entry.weightedTotal}</td></tr>;
+          }) : <tr><td colSpan="9"><div className="repository-empty-state"><strong>No eligible users found.</strong><span>Active members and recruits will appear here.</span></div></td></tr>}
         </tbody></table></div>
       </section>
     </>
@@ -1000,11 +1011,11 @@ export function AdminQuetePage({ page, me, data, draft, setDraft, focalDraft, se
     );
   }
 
-  if (isAdmin && isReportPage) {
+  if (isReportPage) {
     return (
       <QuetePageLayout
         title="Participation Report"
-        subtitle="Review weighted totals on a dedicated admin page and export the same report to Excel."
+        subtitle="Review participation across the full team and export monthly reports to Excel."
         data={data}
         canManage={data.canManage}
         showInsights={true}

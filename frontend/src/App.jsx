@@ -1029,15 +1029,25 @@ export default function App() {
     }
   };
 
-  const exportQueteReport = async (month = '') => {
+  const exportQueteReport = async (month = '', reportType = 'monthly') => {
     try {
+      const isNonParticipantReport = reportType === 'non-participants';
       const normalizedMonth = /^\d{4}-\d{2}$/.test(month) ? month : '';
-      const query = normalizedMonth ? `?month=${encodeURIComponent(normalizedMonth)}` : '';
+      const params = new URLSearchParams();
+      if (normalizedMonth) params.set('month', normalizedMonth);
+      if (isNonParticipantReport) params.set('type', 'non-participants');
+      const query = params.toString() ? `?${params.toString()}` : '';
       await downloadFile(`/api/quete/report/export${query}`, {
         token,
-        filename: normalizedMonth ? `quete-report-${normalizedMonth}.xlsx` : 'quete-report.xlsx'
+        filename: isNonParticipantReport
+          ? 'quete-members-with-no-participation.xlsx'
+          : normalizedMonth
+            ? `quete-report-${normalizedMonth}.xlsx`
+            : 'quete-report.xlsx'
       });
-      showNotice(`${normalizedMonth ? 'Monthly Quete' : 'Quete'} report downloaded successfully.`);
+      showNotice(isNonParticipantReport
+        ? 'Non-participating members report downloaded successfully.'
+        : `${normalizedMonth ? 'Monthly Quete' : 'Quete'} report downloaded successfully.`);
     } catch (err) {
       setError(err.message);
     }
