@@ -2777,15 +2777,6 @@ app.post('/api/quete/shifts/:id/reservations/manage', requireQueteAccess, async 
     return res.status(409).json({ error: 'This user already reserved the selected shift.' });
   }
 
-  const today = formatDateOnly(now());
-  if (shift.bookingOpensOn && shift.bookingOpensOn > today) {
-    return res.status(409).json({ error: 'Reservations for this shift are not open yet.' });
-  }
-
-  if (!isAdminAccount(req.account) && shift.bookingClosesOn && shift.bookingClosesOn < today) {
-    return res.status(409).json({ error: 'Reservations for this shift are closed.' });
-  }
-
   const reservedCount = await queteReservationsCollection().countDocuments({ shiftId: shift._id });
   if (reservedCount >= Number(shift.capacity || 0)) {
     return res.status(409).json({ error: 'This shift is already full.' });
