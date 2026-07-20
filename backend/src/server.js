@@ -951,6 +951,9 @@ async function buildQueteDashboard(account) {
       );
   const sortedVisibleShiftPayload = sortQueteShiftsByAvailability(visibleShiftPayload);
   const sortedShiftPayload = sortQueteShiftsByAvailability(shiftPayload);
+  const calendarShiftPayload = sortedShiftPayload
+    .filter((shift) => shift.isActive !== false)
+    .map((shift) => canManage ? shift : { ...shift, reservations: [] });
   const focals = activeUsers
     .filter((user) => user.isQueteFocal === true || user.role === 'admin')
     .map(sanitizeUser);
@@ -1020,6 +1023,7 @@ async function buildQueteDashboard(account) {
       totalWeightedReservations: Number(totalWeightedReservations.toFixed(2))
     },
     shifts: sortedVisibleShiftPayload,
+    calendarShifts: calendarShiftPayload,
     myReservations,
     myParticipation,
     focals,

@@ -658,13 +658,15 @@ export default function App() {
   };
 
   const deleteLogisticsItem = async (id) => {
-    if (!window.confirm('Delete this logistics item?')) return;
+    setError('');
     try {
       await api(`/api/logistics/${id}`, { token, method: 'DELETE' });
-      await refreshLogistics();
+      setLogisticsItems((current) => current.filter((item) => item.id !== id));
       showNotice('Logistics item deleted successfully.');
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     }
   };
 

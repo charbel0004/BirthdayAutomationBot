@@ -252,6 +252,7 @@ export function createEmptyQueteData() {
       totalWeightedReservations: 0
     },
     shifts: [],
+    calendarShifts: [],
     myReservations: [],
     myParticipation: {
       reservationsCount: 0,

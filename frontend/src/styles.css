@@ -23,13 +23,13 @@
 }
 
 html {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  overflow-x: hidden;
+  overflow-x: clip;
   font-family: 'IBM Plex Sans', sans-serif;
   color: var(--text);
   background:
@@ -1067,6 +1067,337 @@ label {
   white-space: nowrap;
 }
 
+.quete-board-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 20px 0 14px;
+}
+
+.quete-month-navigation,
+.quete-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quete-month-navigation > div {
+  min-width: 190px;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
+.quete-month-navigation strong {
+  color: #173044;
+  font-family: 'IBM Plex Serif', serif;
+  font-size: 1.08rem;
+}
+
+.quete-month-navigation span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.quete-month-arrow {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.quete-today-button {
+  min-height: 42px;
+}
+
+.quete-view-toggle {
+  padding: 4px;
+  border: 1px solid #e6d9ce;
+  border-radius: 16px;
+  background: #f8f2ed;
+}
+
+.quete-view-toggle button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 12px;
+}
+
+.quete-view-toggle button.is-active {
+  box-shadow: 0 5px 14px rgba(127, 17, 23, 0.18);
+}
+
+.quete-calendar-filters {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.25fr) repeat(2, minmax(140px, 0.8fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.quete-calendar-filters label {
+  gap: 5px;
+}
+
+.quete-calendar-filters label > span {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.quete-calendar-filters input,
+.quete-calendar-filters select,
+.quete-calendar-filters > button {
+  min-height: 44px;
+}
+
+.quete-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+  color: #52636f;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.quete-calendar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quete-calendar-legend span::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.quete-calendar-legend .is-available::before {
+  background: #2e8b57;
+}
+
+.quete-calendar-legend .is-limited::before {
+  background: #d48806;
+}
+
+.quete-calendar-legend .is-reserved::before {
+  background: #2870b8;
+}
+
+.quete-calendar-legend .is-unavailable::before {
+  background: #8a969f;
+}
+
+.quete-calendar-desktop {
+  overflow: visible;
+  border: 1px solid #e2d8cf;
+  border-radius: 20px;
+  background: #fffdfa;
+}
+
+.quete-page .quete-calendar-panel {
+  overflow: visible;
+}
+
+.quete-calendar-weekdays,
+.quete-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.quete-calendar-grid {
+  overflow: hidden;
+  border-radius: 0 0 19px 19px;
+}
+
+.quete-calendar-weekdays {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 96px;
+  z-index: 15;
+  align-self: start;
+  overflow: hidden;
+  border-bottom: 1px solid #e7ddd4;
+  border-radius: 19px 19px 0 0;
+  background: linear-gradient(180deg, #f8f1eb 0%, #f5ece5 100%);
+  box-shadow: 0 7px 16px rgba(20, 35, 49, 0.1);
+}
+
+.quete-calendar-weekdays span {
+  padding: 11px 8px;
+  color: #6d5d55;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.quete-calendar-day {
+  min-height: 142px;
+  padding: 8px;
+  border-right: 1px solid #eee5dd;
+  border-bottom: 1px solid #eee5dd;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.quete-calendar-day:nth-child(7n) {
+  border-right: 0;
+}
+
+.quete-calendar-day:nth-last-child(-n + 7) {
+  border-bottom: 0;
+}
+
+.quete-calendar-day.is-outside {
+  background: #f8f5f1;
+}
+
+.quete-calendar-day.is-outside .quete-calendar-day-number,
+.quete-calendar-day.is-outside .quete-calendar-day-shifts {
+  opacity: 0.4;
+}
+
+.quete-calendar-day.is-today {
+  background: linear-gradient(180deg, rgba(177, 32, 40, 0.07), rgba(255, 255, 255, 0.85));
+  box-shadow: inset 0 0 0 2px rgba(177, 32, 40, 0.24);
+}
+
+.quete-calendar-day-number {
+  min-height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  margin-bottom: 5px;
+  color: #45535d;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.quete-calendar-day-number small {
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(177, 32, 40, 0.1);
+  color: var(--red-deep);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+}
+
+.quete-calendar-day-shifts {
+  display: grid;
+  gap: 5px;
+}
+
+.quete-calendar-shift {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1px 5px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #e8f5ec;
+  color: #1d6540;
+  text-align: left;
+  box-shadow: none;
+}
+
+.quete-calendar-shift:hover {
+  filter: none;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 12px rgba(34, 72, 50, 0.12);
+}
+
+.quete-calendar-shift-time {
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.quete-calendar-shift strong {
+  overflow: hidden;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.quete-calendar-shift-status {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  font-size: 0.62rem;
+  font-weight: 600;
+  opacity: 0.82;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quete-calendar-shift.is-limited {
+  border-color: #edc678;
+  background: #fff3d9;
+  color: #865200;
+}
+
+.quete-calendar-shift.is-reserved {
+  border-color: #9dc7ed;
+  background: #e7f2fd;
+  color: #1e5f9e;
+}
+
+.quete-calendar-shift.is-full,
+.quete-calendar-shift.is-closed {
+  border-color: #d9dee1;
+  background: #f0f2f3;
+  color: #66737c;
+}
+
+.quete-calendar-shift.is-upcoming {
+  border-color: #d8c1e5;
+  background: #f3eafa;
+  color: #70458b;
+}
+
+.quete-calendar-mobile-agenda {
+  display: none;
+}
+
+.quete-calendar-empty-desktop {
+  margin-top: 12px;
+}
+
+.quete-calendar-list-view {
+  margin-top: 14px;
+}
+
+.quete-shift-modal {
+  z-index: 60;
+}
+
+.quete-shift-modal-card {
+  width: min(760px, 100%);
+}
+
+.quete-shift-modal-card > .modal-head {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.quete-shift-modal-card > .modal-head h2 {
+  margin-top: 2px;
+}
+
+.quete-shift-modal-card .quete-shift-card {
+  padding: 18px;
+  box-shadow: none;
+}
+
 .quete-table-wrap table {
   min-width: 0;
 }
@@ -1834,15 +2165,32 @@ th {
 
 .logistics-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.logistics-page > *,
+.logistics-page .panel {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .logistics-page-header,
 .logistics-list-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: end;
   gap: 18px;
+}
+
+.logistics-page-header > div:first-child,
+.logistics-list-head > div:first-child,
+.logistics-alert > div > div {
+  min-width: 0;
 }
 
 .logistics-page-header > button,
@@ -1853,19 +2201,27 @@ th {
 .logistics-header-actions,
 .logistics-overlay-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
 }
 
 .logistics-add-overlay {
-  width: min(920px, 100%);
+  width: min(880px, 100%);
+  padding: 0;
 }
 
 .logistics-overlay-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   align-items: flex-start;
-  padding-bottom: 16px;
+  margin: 0;
+  padding: 22px 24px 18px;
   border-bottom: 1px solid #e7ecef;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
 }
 
 .logistics-overlay-head p {
@@ -1874,8 +2230,18 @@ th {
 }
 
 .logistics-overlay-actions {
-  grid-column: 1 / -1;
-  padding-top: 4px;
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: 0 -24px -24px;
+  padding: 16px 24px 24px;
+  border-top: 1px solid #e3e9ed;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
+}
+
+.logistics-overlay-actions button {
+  min-width: 120px;
 }
 
 .logistics-alert,
@@ -1907,6 +2273,7 @@ th {
   margin: 0;
   color: #96333c;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .logistics-clear {
@@ -1924,27 +2291,113 @@ th {
 
 .logistics-create-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
+  padding: 20px 24px 24px;
+}
+
+.logistics-form-section {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #e0e7eb;
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(244, 248, 250, 0.74));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.logistics-form-section-head {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 11px;
+  align-items: start;
+}
+
+.logistics-form-section-head > span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(180deg, var(--red), var(--red-deep));
+  box-shadow: 0 5px 12px rgba(174, 17, 23, 0.18);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.logistics-form-section-head strong {
+  display: block;
+  color: var(--navy);
+  font-size: 0.96rem;
+}
+
+.logistics-form-section-head p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.4;
+}
+
+.logistics-form-grid {
+  display: grid;
+  gap: 12px;
   align-items: end;
 }
 
-.logistics-notes-field {
-  grid-column: span 2;
+.logistics-form-grid-basics,
+.logistics-package-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.logistics-package-toggle {
-  min-height: 48px;
-  padding: 11px 13px;
-  align-self: end;
-  border: 1px solid #d9cfc5;
-  border-radius: 12px;
-  background: #fffdfa;
+.logistics-quantity-grid,
+.logistics-storage-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.logistics-package-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px 17px;
+  border: 1px solid #d9e1e6;
+  border-radius: 14px;
   color: var(--text);
+  background: #f8fafb;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
-.package-conversion-preview,
-.logistics-form-help {
+.logistics-package-switch.is-active {
+  border-color: rgba(215, 25, 32, 0.34);
+  background: linear-gradient(135deg, rgba(255, 247, 247, 0.96), rgba(255, 238, 239, 0.78));
+}
+
+.logistics-package-switch:has(input:focus-visible) {
+  box-shadow: 0 0 0 3px rgba(215, 25, 32, 0.12);
+}
+
+.logistics-package-switch > div {
+  min-width: 0;
+}
+
+.logistics-package-switch strong,
+.logistics-package-switch > div > span {
+  display: block;
+}
+
+.logistics-package-switch strong {
+  margin-bottom: 3px;
+  color: var(--navy);
+}
+
+.logistics-package-switch > div > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.package-conversion-preview {
   padding: 12px 14px;
   border: 1px solid #dbe3e8;
   border-radius: 12px;
@@ -1961,34 +2414,34 @@ th {
   color: var(--navy);
 }
 
-.logistics-form-help {
-  grid-column: 1 / -1;
-  font-size: 0.88rem;
-  line-height: 1.5;
-}
-
 .logistics-table-wrap {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .logistics-table-wrap table {
-  min-width: 1390px;
+  min-width: 1180px;
 }
 
 .logistics-table-wrap th,
 .logistics-table-wrap td {
-  padding: 12px 10px;
+  padding: 10px 7px;
 }
 
 .logistics-table-wrap input,
 .logistics-table-wrap select {
-  min-width: 105px;
-  padding: 9px 10px;
+  min-width: 82px;
+  padding: 8px;
   border-radius: 9px;
 }
 
 .logistics-table-wrap td:first-child input {
-  min-width: 150px;
+  min-width: 125px;
 }
 
 .logistics-low-row {
@@ -1997,10 +2450,10 @@ th {
 
 .quantity-control {
   display: grid;
-  grid-template-columns: 34px minmax(70px, 1fr) 34px;
+  grid-template-columns: 32px minmax(62px, 1fr) 32px;
   gap: 5px;
   align-items: center;
-  min-width: 155px;
+  min-width: 136px;
 }
 
 .quantity-button {
@@ -2014,7 +2467,7 @@ th {
 
 .quantity-equivalent {
   display: block;
-  min-width: 155px;
+  min-width: 136px;
   margin-top: 5px;
   color: var(--muted);
   line-height: 1.35;
@@ -2022,7 +2475,7 @@ th {
 
 .package-editor {
   display: grid;
-  grid-template-columns: 100px 105px;
+  grid-template-columns: 82px 88px;
   gap: 5px;
 }
 
@@ -2042,15 +2495,19 @@ th {
 .logistics-actions {
   display: flex;
   gap: 6px;
+  min-width: 124px;
 }
 
 .logistics-actions button {
-  padding: 9px 11px;
+  flex: 1;
+  padding: 8px 9px;
   border-radius: 9px;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {
-  .logistics-create-form {
+  .logistics-form-grid-basics,
+  .logistics-package-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2078,26 +2535,37 @@ th {
   }
 
   .logistics-add-overlay {
-    padding: 18px;
+    padding: 0;
     border-radius: 18px;
   }
 
   .logistics-overlay-head {
-    position: sticky;
-    top: -18px;
-    z-index: 2;
-    margin: -18px -18px 16px;
     padding: 18px;
-    background: rgba(255, 255, 255, 0.97);
-    backdrop-filter: blur(12px);
   }
 
   .logistics-create-form {
+    gap: 13px;
+    padding: 14px 14px 18px;
+  }
+
+  .logistics-form-section {
+    padding: 15px;
+  }
+
+  .logistics-form-grid-basics,
+  .logistics-package-grid,
+  .logistics-quantity-grid,
+  .logistics-storage-grid {
     grid-template-columns: 1fr;
   }
 
-  .logistics-notes-field {
-    grid-column: auto;
+  .logistics-package-switch {
+    align-items: flex-start;
+  }
+
+  .logistics-overlay-actions {
+    margin: 0 -14px -18px;
+    padding: 14px;
   }
 
   .home-logistics-alert {
@@ -4214,4 +4682,155 @@ textarea:focus-visible {
   .participation-report-actions { width: 100%; flex-direction: column; align-items: stretch; }
   .report-zero-summary { width: 100%; text-align: left; }
   .participation-report-actions > button { width: 100%; }
+}
+
+@media (max-width: 1050px) {
+  .quete-calendar-desktop {
+    display: none;
+  }
+
+  .quete-calendar-mobile-agenda {
+    display: grid;
+    gap: 10px;
+  }
+
+  .quete-calendar-empty-desktop {
+    display: none;
+  }
+
+  .quete-agenda-day {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid #e7ddd4;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.78);
+  }
+
+  .quete-agenda-date {
+    display: grid;
+    align-content: start;
+    gap: 2px;
+    padding-top: 6px;
+    color: #173044;
+  }
+
+  .quete-agenda-date strong {
+    color: var(--red-deep);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+  }
+
+  .quete-agenda-date span {
+    font-size: 0.86rem;
+    font-weight: 800;
+  }
+
+  .quete-agenda-day > div:last-child {
+    display: grid;
+    gap: 7px;
+  }
+
+  .quete-calendar-shift.is-compact {
+    grid-template-columns: 74px minmax(100px, 0.8fr) minmax(110px, 1fr);
+    align-items: center;
+    min-height: 50px;
+    gap: 4px 10px;
+    padding: 9px 11px;
+  }
+
+  .quete-calendar-shift.is-compact .quete-calendar-shift-time,
+  .quete-calendar-shift.is-compact strong,
+  .quete-calendar-shift.is-compact .quete-calendar-shift-status {
+    font-size: 0.75rem;
+  }
+
+  .quete-calendar-shift.is-compact .quete-calendar-shift-status {
+    grid-column: auto;
+  }
+
+  .quete-calendar-shift.is-compact small {
+    grid-column: 2 / -1;
+    overflow: hidden;
+    font-size: 0.68rem;
+    opacity: 0.8;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .quete-board-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .quete-month-navigation {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+  }
+
+  .quete-month-navigation > div {
+    min-width: 0;
+  }
+
+  .quete-today-button {
+    grid-column: 1 / -1;
+  }
+
+  .quete-view-toggle {
+    width: 100%;
+  }
+
+  .quete-view-toggle button {
+    flex: 1;
+  }
+
+  .quete-calendar-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .quete-calendar-filters > button {
+    width: 100%;
+  }
+
+  .quete-calendar-legend {
+    gap: 7px 12px;
+  }
+
+  .quete-shift-modal {
+    padding: 8px;
+  }
+
+  .quete-shift-modal-card {
+    max-height: calc(100dvh - 16px);
+    padding: 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .quete-agenda-day {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .quete-agenda-date {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding-top: 0;
+  }
+
+  .quete-calendar-shift.is-compact {
+    grid-template-columns: 66px minmax(0, 1fr);
+  }
+
+  .quete-calendar-shift.is-compact .quete-calendar-shift-status {
+    grid-column: 1 / -1;
+  }
+
+  .quete-calendar-shift.is-compact small {
+    grid-column: 1 / -1;
+  }
 }

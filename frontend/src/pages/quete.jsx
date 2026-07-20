@@ -59,6 +59,63 @@ function filterShiftsByDateAndLocation(shifts = [], filters = {}) {
     .sort((left, right) => new Date(right.startAt).getTime() - new Date(left.startAt).getTime());
 }
 
+function getMonthKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonth(monthKey, amount) {
+  const [year, month] = String(monthKey || '').split('-').map(Number);
+  const date = new Date(year, (month || 1) - 1 + amount, 1);
+  return getMonthKey(date);
+}
+
+function getShiftDateKey(shift) {
+  return shift.date || toLocalDateInputValue(shift.startAt);
+}
+
+function getShiftAvailabilityStatus(shift, isReservedByCurrentUser) {
+  const todayKey = toLocalDateInputValue(new Date());
+  const availableSeats = Math.max(0, Number(shift.availableSeats ?? (Number(shift.capacity || 0) - Number(shift.reservedCount || 0))));
+
+  if (isReservedByCurrentUser) return 'reserved';
+  if (shift.bookingOpensOn && shift.bookingOpensOn > todayKey) return 'upcoming';
+  if (shift.bookingClosesOn && shift.bookingClosesOn < todayKey) return 'closed';
+  if (availableSeats === 0) return 'full';
+  if (availableSeats <= 2) return 'limited';
+  return 'available';
+}
+
+function getShiftAvailabilityLabel(shift, status) {
+  const availableSeats = Math.max(0, Number(shift.availableSeats ?? (Number(shift.capacity || 0) - Number(shift.reservedCount || 0))));
+  if (status === 'reserved') return 'Reserved';
+  if (status === 'upcoming') return 'Opens soon';
+  if (status === 'closed') return 'Closed';
+  if (status === 'full') return 'Full';
+  return `${availableSeats} seat${availableSeats === 1 ? '' : 's'} left`;
+}
+
+function buildCalendarDays(monthKey) {
+  const [year, month] = String(monthKey || '').split('-').map(Number);
+  if (!year || !month) return [];
+
+  const firstDay = new Date(year, month - 1, 1);
+  const mondayOffset = (firstDay.getDay() + 6) % 7;
+  const gridStart = new Date(year, month - 1, 1 - mondayOffset);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    return {
+      key: toLocalDateInputValue(date),
+      dayNumber: date.getDate(),
+      isCurrentMonth: date.getMonth() === month - 1,
+      isToday: toLocalDateInputValue(date) === toLocalDateInputValue(new Date())
+    };
+  });
+}
+
 function ShiftCard({
   shift,
   isReservedByCurrentUser,
@@ -295,15 +352,252 @@ function ShiftCard({
   );
 }
 
+function QueteCalendarBoard({
+  shifts,
+  myShiftIds,
+  canManage,
+  showMemberManager,
+  manageableUsers,
+  assignmentDraft,
+  onAssignmentChange,
+  onReserve,
+  onAssignUser,
+  onRemoveReservation
+}) {
+  const [selectedMonth, setSelectedMonth] = useState(() => getMonthKey());
+  const [viewMode, setViewMode] = useState('calendar');
+  const [selectedShiftId, setSelectedShiftId] = useState('');
+  const [filters, setFilters] = useState({ location: '', category: '', status: '' });
+  const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
+  const normalizedLocation = filters.location.trim().toLowerCase();
+  const filteredMonthShifts = useMemo(
+    () => shifts
+      .filter((shift) => getShiftDateKey(shift).startsWith(selectedMonth))
+      .filter((shift) => !normalizedLocation || String(shift.location || '').toLowerCase().includes(normalizedLocation))
+      .filter((shift) => !filters.category || shift.shiftCategory === filters.category)
+      .filter((shift) => {
+        if (!filters.status) return true;
+        const status = getShiftAvailabilityStatus(shift, myShiftIds.has(shift.id));
+        if (filters.status === 'open') return status === 'available' || status === 'limited';
+        return status === filters.status;
+      })
+      .sort((left, right) => new Date(left.startAt).getTime() - new Date(right.startAt).getTime()),
+    [shifts, selectedMonth, normalizedLocation, filters.category, filters.status, myShiftIds]
+  );
+  const shiftsByDate = useMemo(
+    () => filteredMonthShifts.reduce((groups, shift) => {
+      const dateKey = getShiftDateKey(shift);
+      const bucket = groups.get(dateKey) || [];
+      bucket.push(shift);
+      groups.set(dateKey, bucket);
+      return groups;
+    }, new Map()),
+    [filteredMonthShifts]
+  );
+  const selectedShift = shifts.find((shift) => shift.id === selectedShiftId) || null;
+  const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
+    .format(new Date(`${selectedMonth}-01T12:00:00`));
+  const openCount = filteredMonthShifts.filter((shift) => {
+    const status = getShiftAvailabilityStatus(shift, myShiftIds.has(shift.id));
+    return status === 'available' || status === 'limited';
+  }).length;
+
+  useEffect(() => {
+    if (!selectedShift) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSelectedShiftId('');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedShift]);
+
+  const renderShiftButton = (shift, compact = false) => {
+    const status = getShiftAvailabilityStatus(shift, myShiftIds.has(shift.id));
+    return (
+      <button
+        key={shift.id}
+        type="button"
+        className={`quete-calendar-shift is-${status}${compact ? ' is-compact' : ''}`}
+        onClick={() => setSelectedShiftId(shift.id)}
+        aria-label={`${shift.title}, ${formatTimeOnlyLabel(shift.startAt)}, ${getShiftAvailabilityLabel(shift, status)}`}
+      >
+        <span className="quete-calendar-shift-time">{formatTimeOnlyLabel(shift.startAt)}</span>
+        <strong>{shift.title}</strong>
+        <span className="quete-calendar-shift-status">{getShiftAvailabilityLabel(shift, status)}</span>
+        {compact && shift.location ? <small>{shift.location}</small> : null}
+      </button>
+    );
+  };
+
+  return (
+    <>
+      <div className="quete-board-toolbar">
+        <div className="quete-month-navigation" aria-label="Calendar month navigation">
+          <button type="button" className="secondary quete-month-arrow" onClick={() => setSelectedMonth((month) => shiftMonth(month, -1))} aria-label="Previous month">‹</button>
+          <div>
+            <strong>{monthLabel}</strong>
+            <span>{filteredMonthShifts.length} shifts · {openCount} open</span>
+          </div>
+          <button type="button" className="secondary quete-month-arrow" onClick={() => setSelectedMonth((month) => shiftMonth(month, 1))} aria-label="Next month">›</button>
+          <button type="button" className="secondary quete-today-button" onClick={() => setSelectedMonth(getMonthKey())}>Today</button>
+        </div>
+        <div className="quete-view-toggle" aria-label="Shift board view">
+          <button type="button" className={viewMode === 'calendar' ? 'is-active' : 'secondary'} onClick={() => setViewMode('calendar')} aria-pressed={viewMode === 'calendar'}>Calendar</button>
+          <button type="button" className={viewMode === 'list' ? 'is-active' : 'secondary'} onClick={() => setViewMode('list')} aria-pressed={viewMode === 'list'}>List</button>
+        </div>
+      </div>
+
+      <form className="quete-calendar-filters" onSubmit={(event) => event.preventDefault()}>
+        <label>
+          <span>Location</span>
+          <input value={filters.location} onChange={(event) => setFilters((current) => ({ ...current, location: event.target.value }))} placeholder="All locations" />
+        </label>
+        <label>
+          <span>Category</span>
+          <select value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}>
+            <option value="">All categories</option>
+            <option value="road">Road</option>
+            <option value="restaurant">Restaurant</option>
+            <option value="church">Church</option>
+            <option value="churchMass">Church Mass</option>
+          </select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+            <option value="">All shifts</option>
+            <option value="open">Available</option>
+            <option value="reserved">My shifts</option>
+            <option value="full">Full</option>
+            <option value="upcoming">Opens soon</option>
+            <option value="closed">Closed</option>
+          </select>
+        </label>
+        <button type="button" className="secondary" onClick={() => setFilters({ location: '', category: '', status: '' })}>Clear filters</button>
+      </form>
+
+      <div className="quete-calendar-legend" aria-label="Shift status legend">
+        <span className="is-available">Available</span>
+        <span className="is-limited">Few seats</span>
+        <span className="is-reserved">My shift</span>
+        <span className="is-unavailable">Full / closed</span>
+      </div>
+
+      {viewMode === 'calendar' ? (
+        <>
+          <div className="quete-calendar-desktop">
+            <div className="quete-calendar-weekdays" aria-hidden="true">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <span key={day}>{day}</span>)}
+            </div>
+            <div className="quete-calendar-grid">
+              {calendarDays.map((day) => (
+                <section key={day.key} className={`quete-calendar-day${day.isCurrentMonth ? '' : ' is-outside'}${day.isToday ? ' is-today' : ''}`} aria-label={formatCompactDate(day.key)}>
+                  <div className="quete-calendar-day-number">
+                    <span>{day.dayNumber}</span>
+                    {day.isToday ? <small>Today</small> : null}
+                  </div>
+                  <div className="quete-calendar-day-shifts">
+                    {(shiftsByDate.get(day.key) || []).map((shift) => renderShiftButton(shift))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+          {!filteredMonthShifts.length ? (
+            <div className="repository-empty-state quete-calendar-empty-desktop">
+              <strong>No shifts in {monthLabel}.</strong>
+              <span>Choose another month or clear your filters.</span>
+            </div>
+          ) : null}
+          <div className="quete-calendar-mobile-agenda">
+            {Array.from(shiftsByDate.entries()).length ? Array.from(shiftsByDate.entries()).map(([dateKey, dateShifts]) => (
+              <section key={dateKey} className="quete-agenda-day">
+                <div className="quete-agenda-date">
+                  <strong>{new Date(`${dateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' })}</strong>
+                  <span>{new Date(`${dateKey}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                </div>
+                <div>{dateShifts.map((shift) => renderShiftButton(shift, true))}</div>
+              </section>
+            )) : (
+              <div className="repository-empty-state">
+                <strong>No shifts in {monthLabel}.</strong>
+                <span>Choose another month or clear your filters.</span>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="repository-card-list quete-shift-list quete-calendar-list-view">
+          {filteredMonthShifts.length ? filteredMonthShifts.map((shift) => (
+            <ShiftCard
+              key={shift.id}
+              shift={shift}
+              isReservedByCurrentUser={myShiftIds.has(shift.id)}
+              canManage={canManage}
+              showMemberManager={showMemberManager}
+              isOpen={selectedShiftId === shift.id}
+              onToggle={() => setSelectedShiftId((current) => current === shift.id ? '' : shift.id)}
+              manageableUsers={manageableUsers}
+              assignmentDraft={assignmentDraft}
+              onAssignmentChange={onAssignmentChange}
+              onReserve={onReserve}
+              onAssignUser={onAssignUser}
+              onRemoveReservation={onRemoveReservation}
+            />
+          )) : (
+            <div className="repository-empty-state">
+              <strong>No shifts in {monthLabel}.</strong>
+              <span>Choose another month or clear your filters.</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedShift && viewMode === 'calendar' ? (
+        <div className="modal-backdrop quete-shift-modal" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedShiftId('');
+        }}>
+          <div className="modal-card quete-shift-modal-card" role="dialog" aria-modal="true" aria-labelledby="quete-shift-dialog-title">
+            <div className="modal-head">
+              <div>
+                <div className="panel-kicker">Shift details</div>
+                <h2 id="quete-shift-dialog-title">{selectedShift.title}</h2>
+              </div>
+              <button type="button" className="secondary" onClick={() => setSelectedShiftId('')} aria-label="Close shift details">Close</button>
+            </div>
+            <ShiftCard
+              shift={selectedShift}
+              isReservedByCurrentUser={myShiftIds.has(selectedShift.id)}
+              canManage={canManage}
+              showMemberManager={showMemberManager}
+              isOpen
+              onToggle={() => {}}
+              manageableUsers={manageableUsers}
+              assignmentDraft={assignmentDraft}
+              onAssignmentChange={onAssignmentChange}
+              onReserve={onReserve}
+              onAssignUser={onAssignUser}
+              onRemoveReservation={onRemoveReservation}
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manageableUsers, assignmentDraft, onAssignmentChange, onReserve, onAssignUser, onRemoveReservation, onBack, children, showShiftList = true, showMemberManager = false }) {
-  const [openShiftId, setOpenShiftId] = useState('');
-  const [filters, setFilters] = useState({ date: '', location: '' });
   const myShiftIds = new Set((data.myReservations || []).map((item) => item.shift.id));
   const myParticipation = data.myParticipation || {};
-  const filteredShifts = useMemo(
-    () => filterShiftsByDateAndLocation(data.shifts || [], filters),
-    [data.shifts, filters]
-  );
+  const calendarShifts = useMemo(() => {
+    const uniqueShifts = new Map();
+    (data.calendarShifts || data.shifts || []).forEach((shift) => uniqueShifts.set(shift.id, shift));
+    (data.shifts || []).forEach((shift) => uniqueShifts.set(shift.id, shift));
+    (data.myReservations || []).forEach((item) => {
+      if (item.shift) uniqueShifts.set(item.shift.id, item.shift);
+    });
+    return Array.from(uniqueShifts.values());
+  }, [data.calendarShifts, data.shifts, data.myReservations]);
   const shiftMixItems = useMemo(() => ([
     { label: 'Road', value: data.stats.roadShifts || 0 },
     { label: 'Restaurant', value: data.stats.restaurantShifts || 0 },
@@ -408,58 +702,25 @@ function QuetePageLayout({ title, subtitle, data, canManage, showInsights, manag
       ) : null}
       {children}
       {showShiftList ? (
-        <section className="panel">
+        <section className="panel quete-calendar-panel">
           <div className="section-head">
             <div>
-              <h2>Available shifts</h2>
-              <p>Morning and afternoon capacity updates in real time as people are added or removed.</p>
+              <h2>Monthly shift calendar</h2>
+              <p>See availability at a glance, then select a morning or afternoon shift to view its details.</p>
             </div>
           </div>
-          <form className="filter-form repository-filter-form" onSubmit={(event) => event.preventDefault()}>
-            <label>
-              <span>Date</span>
-              <input
-                type="date"
-                value={filters.date}
-                onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))}
-              />
-            </label>
-            <label>
-              <span>Location</span>
-              <input
-                placeholder="Filter by location"
-                value={filters.location}
-                onChange={(event) => setFilters((current) => ({ ...current, location: event.target.value }))}
-              />
-            </label>
-            <div className="repository-filter-actions">
-              <button type="button" className="secondary" onClick={() => setFilters({ date: '', location: '' })}>Clear</button>
-            </div>
-          </form>
-          <div className="repository-card-list quete-shift-list">
-            {filteredShifts.length ? filteredShifts.map((shift) => (
-              <ShiftCard
-                key={shift.id}
-                shift={shift}
-                isReservedByCurrentUser={myShiftIds.has(shift.id)}
-                canManage={canManage}
-                showMemberManager={showMemberManager}
-                isOpen={openShiftId === shift.id}
-                onToggle={() => setOpenShiftId((current) => current === shift.id ? '' : shift.id)}
-                manageableUsers={manageableUsers}
-                assignmentDraft={assignmentDraft}
-                onAssignmentChange={onAssignmentChange}
-                onReserve={onReserve}
-                onAssignUser={onAssignUser}
-                onRemoveReservation={onRemoveReservation}
-              />
-            )) : (
-              <div className="repository-empty-state">
-                <strong>No matching quete shifts.</strong>
-                <span>Try a different date or location filter.</span>
-              </div>
-            )}
-          </div>
+          <QueteCalendarBoard
+            shifts={calendarShifts}
+            myShiftIds={myShiftIds}
+            canManage={canManage}
+            showMemberManager={showMemberManager}
+            manageableUsers={manageableUsers}
+            assignmentDraft={assignmentDraft}
+            onAssignmentChange={onAssignmentChange}
+            onReserve={onReserve}
+            onAssignUser={onAssignUser}
+            onRemoveReservation={onRemoveReservation}
+          />
         </section>
       ) : null}
     </div>
