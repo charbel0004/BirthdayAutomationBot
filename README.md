@@ -110,6 +110,8 @@ If you also want the default GitHub Pages domain to work during setup, add it to
 - The same bot token can use separate `birthdayChatId` and `logisticsChatId` destinations.
 - Logistics inventory is stored in MongoDB and items at or below their reorder point are shown on the website.
 - Inventory supports a base unit plus optional packaging (for example, pieces with 24 pieces per box), including mixed stock such as full boxes plus loose pieces.
+- The Add Item workflow opens in a responsive overlay, while mobile inventory records switch from a wide table to editable cards.
+- Logistics is always enabled for admins. Admins can grant or remove Logistics Inventory access for each member or recruit from Users & Roles.
 - The scheduler sends one consolidated logistics reorder reminder per day when low-stock items exist. Admins can also send it immediately from the Logistics page.
 - The birthday and logistics scheduler still runs in the backend process, not inside MongoDB itself.
 - If Fly scales to zero, a midnight timer cannot fire, so `min_machines_running = 1` is required.

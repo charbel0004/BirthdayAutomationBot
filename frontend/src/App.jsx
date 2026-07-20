@@ -195,6 +195,7 @@ export default function App() {
   const canAccessRecruitment = hasModuleAccess(me?.user, 'recruitment');
   const canAccessPresentations = hasModuleAccess(me?.user, 'presentations');
   const canAccessQuete = hasModuleAccess(me?.user, 'quete');
+  const canAccessLogistics = hasModuleAccess(me?.user, 'logistics');
   const canAccessCertificateGenerator = hasModuleAccess(me?.user, 'certificateGenerator');
 
   const loadData = async () => {
@@ -219,10 +220,13 @@ export default function App() {
         requestEntries.push(['quete', api('/api/quete/dashboard', { token })]);
       }
 
+      if (hasModuleAccess(mePayload.user, 'logistics')) {
+        requestEntries.push(['logistics', api('/api/logistics', { token })]);
+      }
+
       if (isAdmin) {
         requestEntries.push(['users', api('/api/users', { token })]);
         requestEntries.push(['settings', api('/api/settings', { token })]);
-        requestEntries.push(['logistics', api('/api/logistics', { token })]);
       }
 
       const settled = await Promise.allSettled(requestEntries.map(([, request]) => request));
@@ -237,6 +241,7 @@ export default function App() {
 
       setMe(mePayload);
       setBirthdays(payloads.birthdays || []);
+      setLogisticsItems(payloads.logistics || []);
       setDonorStats(createEmptyDonorStats());
       setEligibleDonors([]);
       setAllDonors([]);
@@ -268,7 +273,6 @@ export default function App() {
 
       if (isAdmin) {
         setUsers(payloads.users || []);
-        setLogisticsItems(payloads.logistics || []);
         setSettings({
           botToken: payloads.settings?.botToken || '',
           birthdayChatId: payloads.settings?.birthdayChatId || '',
@@ -279,7 +283,6 @@ export default function App() {
         setPresentationReport(createEmptyPresentationReport());
       } else {
         setUsers([]);
-        setLogisticsItems([]);
         setPresentationReport(isRecruit ? {
           rankings: (payloads.presentation?.presenters || []).map((item) => ({
             presenter: item.user.displayName,
@@ -427,7 +430,7 @@ export default function App() {
       (isRecruitmentPage && !canAccessRecruitment) ||
       (isPresentationPage && !canAccessPresentations) ||
       (isQuetePage && !canAccessQuete) ||
-      (page === pages.logistics && me.user.role !== 'admin') ||
+      (page === pages.logistics && !canAccessLogistics) ||
       (page === pages.certificateGenerator && !canAccessCertificateGenerator)
     ) {
       setPage(pages.home);
@@ -440,7 +443,7 @@ export default function App() {
     if (isQuetePage && canAccessQuete) {
       refreshQuete().catch((err) => setError(err.message));
     }
-  }, [token, me, page, isBloodDrivePage, isRecruitmentPage, isPresentationPage, isQuetePage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, canAccessQuete, canAccessCertificateGenerator, presentationYear]);
+  }, [token, me, page, isBloodDrivePage, isRecruitmentPage, isPresentationPage, isQuetePage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, canAccessQuete, canAccessLogistics, canAccessCertificateGenerator, presentationYear]);
 
   useEffect(() => {
     if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage)) {
@@ -637,8 +640,10 @@ export default function App() {
       setNewLogisticsItem(createEmptyLogisticsItem());
       await refreshLogistics();
       showNotice('Logistics item added successfully.');
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     }
   };
 
@@ -1461,7 +1466,7 @@ export default function App() {
   const memberBirthday = birthdays[0] || null;
   const primaryNavigation = [
     { page: pages.home, label: 'Overview', visible: true },
-    { page: pages.logistics, label: 'Logistics', visible: isAdmin },
+    { page: pages.logistics, label: 'Logistics', visible: canAccessLogistics },
     { page: pages.bloodDrive, label: 'Blood Drive', visible: canAccessBloodDrive },
     { page: pages.recruitment, label: 'Recruitment', visible: canAccessRecruitment },
     { page: pages.presentations, label: 'Presentations', visible: canAccessPresentations },
@@ -1489,7 +1494,7 @@ export default function App() {
   }
 
   const renderPage = () => {
-    if (page === pages.logistics && isAdmin) {
+    if (page === pages.logistics && canAccessLogistics) {
       return (
         <LogisticsPage
           items={logisticsItems}
@@ -1499,6 +1504,7 @@ export default function App() {
           onSave={updateLogisticsItem}
           onDelete={deleteLogisticsItem}
           onSendReminder={runLogisticsNow}
+          canSendReminder={isAdmin}
         />
       );
     }

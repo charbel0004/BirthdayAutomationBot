@@ -23,13 +23,14 @@ export const pages = {
   queteFocals: 'quete-focals'
 };
 
-export const moduleAccessKeys = ['bloodDrive', 'recruitment', 'presentations', 'quete', 'certificateGenerator'];
+export const moduleAccessKeys = ['bloodDrive', 'recruitment', 'presentations', 'quete', 'logistics', 'certificateGenerator'];
 
 export const moduleAccessLabels = {
   bloodDrive: 'Blood Drive',
   recruitment: 'Recruitment',
   presentations: 'Presentations',
   quete: 'Quete',
+  logistics: 'Logistics Inventory',
   certificateGenerator: 'Certificate Generator'
 };
 
@@ -151,6 +152,7 @@ export function createDefaultModuleAccess(role = 'member') {
       recruitment: true,
       presentations: true,
       quete: true,
+      logistics: true,
       certificateGenerator: true
     };
   }
@@ -161,6 +163,7 @@ export function createDefaultModuleAccess(role = 'member') {
       recruitment: false,
       presentations: true,
       quete: true,
+      logistics: false,
       certificateGenerator: false
     };
   }
@@ -170,16 +173,21 @@ export function createDefaultModuleAccess(role = 'member') {
     recruitment: true,
     presentations: true,
     quete: true,
+    logistics: false,
     certificateGenerator: false
   };
 }
 
 export function normalizeModuleAccess(role = 'member', moduleAccess = {}) {
   const defaults = createDefaultModuleAccess(role);
-  return moduleAccessKeys.reduce((accumulator, key) => {
-    accumulator[key] = typeof moduleAccess?.[key] === 'boolean' ? moduleAccess[key] : defaults[key];
+  const normalized = moduleAccessKeys.reduce((accumulator, key) => {
+    accumulator[key] = role === 'admin'
+      ? true
+      : (typeof moduleAccess?.[key] === 'boolean' ? moduleAccess[key] : defaults[key]);
     return accumulator;
   }, {});
+  normalized.quete = true;
+  return normalized;
 }
 
 export function hasModuleAccess(user, moduleKey) {

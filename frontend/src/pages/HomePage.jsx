@@ -73,6 +73,7 @@ export default function HomePage(props) {
   const canAccessRecruitment = hasModuleAccess(me.user, 'recruitment');
   const canAccessPresentations = hasModuleAccess(me.user, 'presentations');
   const canAccessQuete = hasModuleAccess(me.user, 'quete');
+  const canAccessLogistics = hasModuleAccess(me.user, 'logistics');
   const canAccessCertificateGenerator = hasModuleAccess(me.user, 'certificateGenerator');
 
   if (isAdmin && page === pages.adminBirthdays) {
@@ -157,7 +158,7 @@ export default function HomePage(props) {
 
       {isAdmin ? <AdminSummary summary={me.summary} /> : null}
 
-      {isAdmin && logisticsItems.some((item) => item.isLowStock) ? (
+      {canAccessLogistics && logisticsItems.some((item) => item.isLowStock) ? (
         <button type="button" className="home-logistics-alert" onClick={onOpenLogistics}>
           <span aria-hidden="true">!</span>
           <strong>{logisticsItems.filter((item) => item.isLowStock).length} logistics item{logisticsItems.filter((item) => item.isLowStock).length === 1 ? '' : 's'} need reordering</strong>
@@ -178,6 +179,14 @@ export default function HomePage(props) {
             memberName={me.user.displayName || me.user.username}
             birthday={memberBirthday}
             onClick={onOpenBirthdayOverlay}
+          />
+        ) : null}
+        {!isAdmin && canAccessLogistics ? (
+          <ModuleCard
+            title="Logistics Inventory"
+            description="Track stock quantities, package sizes, and items that have reached their reorder point."
+            icon={<div className="module-icon-text">📦</div>}
+            onClick={onOpenLogistics}
           />
         ) : null}
         {canAccessBloodDrive ? (

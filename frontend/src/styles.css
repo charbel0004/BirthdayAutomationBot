@@ -1850,6 +1850,34 @@ th {
   flex: 0 0 auto;
 }
 
+.logistics-header-actions,
+.logistics-overlay-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.logistics-add-overlay {
+  width: min(920px, 100%);
+}
+
+.logistics-overlay-head {
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e7ecef;
+}
+
+.logistics-overlay-head p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.logistics-overlay-actions {
+  grid-column: 1 / -1;
+  padding-top: 4px;
+}
+
 .logistics-alert,
 .logistics-clear {
   padding: 18px 20px;
@@ -2039,6 +2067,31 @@ th {
     width: 100%;
   }
 
+  .logistics-header-actions,
+  .logistics-overlay-actions {
+    width: 100%;
+  }
+
+  .logistics-header-actions button,
+  .logistics-overlay-actions button {
+    flex: 1;
+  }
+
+  .logistics-add-overlay {
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .logistics-overlay-head {
+    position: sticky;
+    top: -18px;
+    z-index: 2;
+    margin: -18px -18px 16px;
+    padding: 18px;
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(12px);
+  }
+
   .logistics-create-form {
     grid-template-columns: 1fr;
   }
@@ -2053,6 +2106,79 @@ th {
 
   .home-logistics-alert small {
     grid-column: 2;
+  }
+
+  .logistics-table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .logistics-table-wrap table,
+  .logistics-table-wrap tbody {
+    display: grid;
+    min-width: 0;
+    gap: 14px;
+  }
+
+  .logistics-table-wrap thead {
+    display: none;
+  }
+
+  .logistics-table-wrap tr {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid #dfe6ea;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .logistics-table-wrap td {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 12px;
+    border-bottom: 1px solid #edf0f2;
+  }
+
+  .logistics-table-wrap td::before {
+    content: attr(data-label);
+    color: #657480;
+    font-size: 0.69rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .logistics-table-wrap td:last-child {
+    border-bottom: 0;
+  }
+
+  .logistics-table-wrap input,
+  .logistics-table-wrap select,
+  .logistics-table-wrap td:first-child input {
+    min-width: 0;
+  }
+
+  .quantity-control,
+  .quantity-equivalent,
+  .package-editor {
+    min-width: 0;
+  }
+
+  .package-editor {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .logistics-actions {
+    width: 100%;
+  }
+
+  .logistics-actions button {
+    flex: 1;
   }
 }
 

@@ -62,7 +62,7 @@ app.use(cors({
 app.use(express.json());
 
 const USER_ROLES = ['admin', 'member', 'new recruit'];
-const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations', 'quete', 'certificateGenerator'];
+const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations', 'quete', 'logistics', 'certificateGenerator'];
 const certificateUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 }
@@ -296,6 +296,7 @@ function createDefaultModuleAccess(role = 'member') {
       recruitment: true,
       presentations: true,
       quete: true,
+      logistics: true,
       certificateGenerator: true
     };
   }
@@ -306,6 +307,7 @@ function createDefaultModuleAccess(role = 'member') {
       recruitment: false,
       presentations: true,
       quete: true,
+      logistics: false,
       certificateGenerator: false
     };
   }
@@ -315,6 +317,7 @@ function createDefaultModuleAccess(role = 'member') {
     recruitment: true,
     presentations: true,
     quete: true,
+    logistics: false,
     certificateGenerator: false
   };
 }
@@ -322,7 +325,9 @@ function createDefaultModuleAccess(role = 'member') {
 function normalizeModuleAccess(role = 'member', moduleAccess = {}) {
   const defaults = createDefaultModuleAccess(role);
   const normalized = MODULE_ACCESS_KEYS.reduce((accumulator, key) => {
-    accumulator[key] = typeof moduleAccess?.[key] === 'boolean' ? moduleAccess[key] : defaults[key];
+    accumulator[key] = role === 'admin'
+      ? true
+      : (typeof moduleAccess?.[key] === 'boolean' ? moduleAccess[key] : defaults[key]);
     return accumulator;
   }, {});
 
@@ -339,6 +344,7 @@ function createSignupModuleAccess(role = 'member') {
       recruitment: false,
       presentations: true,
       quete: true,
+      logistics: false,
       certificateGenerator: false
     };
   }
@@ -1499,6 +1505,7 @@ const requireBloodDriveAccess = requireModuleAccess('bloodDrive');
 const requireRecruitmentAccess = requireModuleAccess('recruitment');
 const requirePresentationsAccess = requireModuleAccess('presentations');
 const requireQueteAccess = requireModuleAccess('quete');
+const requireLogisticsAccess = requireModuleAccess('logistics');
 
 app.get('/api/me', async (req, res) => {
   const [summary, telegram, ownBirthdays] = await Promise.all([
@@ -1783,7 +1790,7 @@ app.delete('/api/birthdays/:id', async (req, res) => {
   return res.status(204).send();
 });
 
-app.get('/api/logistics', requireRole('admin'), async (req, res) => {
+app.get('/api/logistics', requireLogisticsAccess, async (req, res) => {
   const items = await logisticsItemsCollection()
     .find({})
     .sort({ category: 1, name: 1 })
@@ -1791,7 +1798,7 @@ app.get('/api/logistics', requireRole('admin'), async (req, res) => {
   res.json(items.map(sanitizeLogisticsItem));
 });
 
-app.post('/api/logistics', requireRole('admin'), async (req, res) => {
+app.post('/api/logistics', requireLogisticsAccess, async (req, res) => {
   const {
     name,
     category = 'daily-use',
@@ -1858,7 +1865,7 @@ app.post('/api/logistics', requireRole('admin'), async (req, res) => {
   return res.status(201).json(sanitizeLogisticsItem({ ...item, _id: result.insertedId }));
 });
 
-app.put('/api/logistics/:id', requireRole('admin'), async (req, res) => {
+app.put('/api/logistics/:id', requireLogisticsAccess, async (req, res) => {
   const item = await getLogisticsItemById(req.params.id);
   if (!item) {
     return res.status(404).json({ error: 'The selected logistics item could not be found.' });
@@ -1922,7 +1929,7 @@ app.put('/api/logistics/:id', requireRole('admin'), async (req, res) => {
   return res.json(sanitizeLogisticsItem(updated));
 });
 
-app.delete('/api/logistics/:id', requireRole('admin'), async (req, res) => {
+app.delete('/api/logistics/:id', requireLogisticsAccess, async (req, res) => {
   const itemId = toObjectId(req.params.id);
   if (!itemId) return res.status(404).json({ error: 'The selected logistics item could not be found.' });
   const result = await logisticsItemsCollection().deleteOne({ _id: itemId });

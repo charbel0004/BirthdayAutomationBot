@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const categoryLabels = {
   cleaning: 'Cleaning',
@@ -52,14 +53,14 @@ function InventoryRow({ item, onSave, onDelete }) {
 
   return (
     <tr className={item.isLowStock ? 'logistics-low-row' : ''}>
-      <td>
+      <td data-label="Item">
         <input
           aria-label={`Name for ${item.name}`}
           value={draft.name}
           onChange={(event) => update('name', event.target.value)}
         />
       </td>
-      <td>
+      <td data-label="Category">
         <select
           aria-label={`Category for ${item.name}`}
           value={draft.category}
@@ -70,7 +71,7 @@ function InventoryRow({ item, onSave, onDelete }) {
           ))}
         </select>
       </td>
-      <td>
+      <td data-label="Quantity">
         <div className="quantity-control">
           <button type="button" className="secondary quantity-button" onClick={() => adjustQuantity(-1)} aria-label={`Remove one ${item.unit || 'unit'} of ${item.name}`}>−</button>
           <input
@@ -85,14 +86,14 @@ function InventoryRow({ item, onSave, onDelete }) {
         </div>
         <small className="quantity-equivalent">{describeQuantity(draft.quantity, draft)}</small>
       </td>
-      <td>
+      <td data-label="Unit">
         <input
           aria-label={`Unit for ${item.name}`}
           value={draft.unit}
           onChange={(event) => update('unit', event.target.value)}
         />
       </td>
-      <td>
+      <td data-label="Packaging">
         <div className="package-editor">
           <input
             aria-label={`Package name for ${item.name}`}
@@ -117,7 +118,7 @@ function InventoryRow({ item, onSave, onDelete }) {
           </div>
         ) : null}
       </td>
-      <td>
+      <td data-label="Reorder at">
         <input
           type="number"
           min="0"
@@ -127,19 +128,19 @@ function InventoryRow({ item, onSave, onDelete }) {
           onChange={(event) => update('reorderPoint', event.target.value)}
         />
       </td>
-      <td>
+      <td data-label="Location">
         <input
           aria-label={`Storage location for ${item.name}`}
           value={draft.location}
           onChange={(event) => update('location', event.target.value)}
         />
       </td>
-      <td>
+      <td data-label="Status">
         <span className={`status-chip ${item.isLowStock ? 'off' : 'on'}`}>
           {item.isLowStock ? 'Reorder' : 'In stock'}
         </span>
       </td>
-      <td>
+      <td data-label="Actions">
         <div className="actions logistics-actions">
           <button type="button" onClick={() => onSave(item.id, draft)}>Save</button>
           <button type="button" className="secondary" onClick={() => onDelete(item.id)}>Delete</button>
@@ -156,9 +157,11 @@ export default function LogisticsPage({
   onCreate,
   onSave,
   onDelete,
-  onSendReminder
+  onSendReminder,
+  canSendReminder
 }) {
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [addItemOpen, setAddItemOpen] = useState(false);
   const lowStockItems = useMemo(() => items.filter((item) => item.isLowStock), [items]);
   const visibleItems = categoryFilter === 'all'
     ? items
@@ -166,9 +169,9 @@ export default function LogisticsPage({
   const packageSize = Number(draft.unitsPerPackage);
   const packageDetailsValid = draft.usesPackages && Number.isFinite(packageSize) && packageSize > 0;
 
-  const handleCreate = (event) => {
+  const handleCreate = async (event) => {
     event.preventDefault();
-    onCreate({
+    const created = await onCreate({
       ...draft,
       quantity: draft.usesPackages
         ? Number(draft.packageQuantity || 0) * packageSize + Number(draft.looseQuantity || 0)
@@ -179,6 +182,7 @@ export default function LogisticsPage({
       packageUnit: draft.usesPackages ? draft.packageUnit : '',
       unitsPerPackage: draft.usesPackages ? packageSize : null
     });
+    if (created) setAddItemOpen(false);
   };
 
   return (
@@ -189,7 +193,10 @@ export default function LogisticsPage({
           <h2>Logistics Inventory</h2>
           <p>Track supplies for cleaning, events, activities, and daily use. Items at or below their reorder point appear here and in the daily Telegram reminder.</p>
         </div>
-        <button type="button" onClick={onSendReminder}>Send Telegram Reminder</button>
+        <div className="logistics-header-actions">
+          {canSendReminder ? <button type="button" className="secondary" onClick={onSendReminder}>Send Reminder</button> : null}
+          <button type="button" onClick={() => setAddItemOpen(true)}>Add Item</button>
+        </div>
       </div>
 
       {lowStockItems.length ? (
@@ -213,100 +220,6 @@ export default function LogisticsPage({
         <article className="stat-card"><span>Tracked items</span><strong>{items.length}</strong></article>
         <article className="stat-card"><span>Ready to reorder</span><strong>{lowStockItems.length}</strong></article>
         <article className="stat-card"><span>Categories in use</span><strong>{new Set(items.map((item) => item.category)).size}</strong></article>
-      </section>
-
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <h2>Add an inventory item</h2>
-            <p>Set the current amount and the point where the website and Telegram should remind you to reorder.</p>
-          </div>
-        </div>
-        <form className="logistics-create-form" onSubmit={handleCreate}>
-          <label>
-            Item name
-            <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Paper towels" required />
-          </label>
-          <label>
-            Category
-            <select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>
-              {Object.entries(categoryLabels).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Base unit
-            <input value={draft.unit} onChange={(event) => setDraft({ ...draft, unit: event.target.value })} placeholder="piece, bottle, roll, liter, kg" required />
-          </label>
-          <label className="inline-checkbox logistics-package-toggle">
-            <input
-              type="checkbox"
-              checked={draft.usesPackages}
-              onChange={(event) => setDraft({ ...draft, usesPackages: event.target.checked })}
-            />
-            This item comes in packages
-          </label>
-          {draft.usesPackages ? (
-            <>
-              <label>
-                Package name
-                <input value={draft.packageUnit} onChange={(event) => setDraft({ ...draft, packageUnit: event.target.value })} placeholder="box, bag, pack, carton" required />
-              </label>
-              <label>
-                Base units per package
-                <input type="number" min="0.01" step="any" value={draft.unitsPerPackage} onChange={(event) => setDraft({ ...draft, unitsPerPackage: event.target.value })} placeholder="24" required />
-              </label>
-              <label>
-                Current full packages
-                <input type="number" min="0" step="any" value={draft.packageQuantity} onChange={(event) => setDraft({ ...draft, packageQuantity: event.target.value })} required />
-              </label>
-              <label>
-                Current loose {draft.unit || 'units'}
-                <input type="number" min="0" step="any" value={draft.looseQuantity} onChange={(event) => setDraft({ ...draft, looseQuantity: event.target.value })} required />
-              </label>
-              <label>
-                Reorder at full packages
-                <input type="number" min="0" step="any" value={draft.reorderPackageQuantity} onChange={(event) => setDraft({ ...draft, reorderPackageQuantity: event.target.value })} required />
-              </label>
-              <label>
-                Plus loose {draft.unit || 'units'}
-                <input type="number" min="0" step="any" value={draft.reorderLooseQuantity} onChange={(event) => setDraft({ ...draft, reorderLooseQuantity: event.target.value })} required />
-              </label>
-              <div className="package-conversion-preview">
-                <span>Current total</span>
-                <strong>
-                  {packageDetailsValid
-                    ? describeQuantity(Number(draft.packageQuantity || 0) * packageSize + Number(draft.looseQuantity || 0), draft)
-                    : 'Enter a package size'}
-                </strong>
-              </div>
-            </>
-          ) : (
-            <>
-              <label>
-                Current quantity
-                <input type="number" min="0" step="any" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} required />
-              </label>
-              <label>
-                Reorder point
-                <input type="number" min="0" step="any" value={draft.reorderPoint} onChange={(event) => setDraft({ ...draft, reorderPoint: event.target.value })} required />
-              </label>
-            </>
-          )}
-          <label>
-            Storage location
-            <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} placeholder="Main storage room" />
-          </label>
-          <label className="logistics-notes-field">
-            Notes
-            <input value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Preferred brand or supplier" />
-          </label>
-          <button type="submit">Add Item</button>
-          <div className="logistics-form-help">
-            <strong>Example:</strong> 3 boxes × 24 pieces + 5 loose pieces = 77 pieces. You can also track liters, kilograms, rolls, bottles, or whole bags directly.
-          </div>
-        </form>
       </section>
 
       <section className="panel">
@@ -349,6 +262,116 @@ export default function LogisticsPage({
           {!visibleItems.length ? <div className="repository-empty-state"><strong>No inventory items yet.</strong><span>Add the first item above to begin tracking stock.</span></div> : null}
         </div>
       </section>
+
+      {addItemOpen ? createPortal(
+        <div className="modal-backdrop modal-backdrop-top" onClick={() => setAddItemOpen(false)}>
+          <div
+            className="modal-card logistics-add-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logistics-add-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-head logistics-overlay-head">
+              <div>
+                <div className="panel-kicker">New inventory record</div>
+                <h2 id="logistics-add-title">Add Item</h2>
+                <p>Set the current amount and the point where reminders should begin.</p>
+              </div>
+              <button type="button" className="secondary" onClick={() => setAddItemOpen(false)}>Close</button>
+            </div>
+            <form className="logistics-create-form" onSubmit={handleCreate}>
+              <label>
+                Item name
+                <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Paper towels" autoFocus required />
+              </label>
+              <label>
+                Category
+                <select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>
+                  {Object.entries(categoryLabels).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Base unit
+                <input value={draft.unit} onChange={(event) => setDraft({ ...draft, unit: event.target.value })} placeholder="piece, bottle, roll, liter, kg" required />
+              </label>
+              <label className="inline-checkbox logistics-package-toggle">
+                <input
+                  type="checkbox"
+                  checked={draft.usesPackages}
+                  onChange={(event) => setDraft({ ...draft, usesPackages: event.target.checked })}
+                />
+                This item comes in packages
+              </label>
+              {draft.usesPackages ? (
+                <>
+                  <label>
+                    Package name
+                    <input value={draft.packageUnit} onChange={(event) => setDraft({ ...draft, packageUnit: event.target.value })} placeholder="box, bag, pack, carton" required />
+                  </label>
+                  <label>
+                    Base units per package
+                    <input type="number" min="0.01" step="any" value={draft.unitsPerPackage} onChange={(event) => setDraft({ ...draft, unitsPerPackage: event.target.value })} placeholder="24" required />
+                  </label>
+                  <label>
+                    Current full packages
+                    <input type="number" min="0" step="any" value={draft.packageQuantity} onChange={(event) => setDraft({ ...draft, packageQuantity: event.target.value })} required />
+                  </label>
+                  <label>
+                    Current loose {draft.unit || 'units'}
+                    <input type="number" min="0" step="any" value={draft.looseQuantity} onChange={(event) => setDraft({ ...draft, looseQuantity: event.target.value })} required />
+                  </label>
+                  <label>
+                    Reorder at full packages
+                    <input type="number" min="0" step="any" value={draft.reorderPackageQuantity} onChange={(event) => setDraft({ ...draft, reorderPackageQuantity: event.target.value })} required />
+                  </label>
+                  <label>
+                    Plus loose {draft.unit || 'units'}
+                    <input type="number" min="0" step="any" value={draft.reorderLooseQuantity} onChange={(event) => setDraft({ ...draft, reorderLooseQuantity: event.target.value })} required />
+                  </label>
+                  <div className="package-conversion-preview">
+                    <span>Current total</span>
+                    <strong>
+                      {packageDetailsValid
+                        ? describeQuantity(Number(draft.packageQuantity || 0) * packageSize + Number(draft.looseQuantity || 0), draft)
+                        : 'Enter a package size'}
+                    </strong>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label>
+                    Current quantity
+                    <input type="number" min="0" step="any" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} required />
+                  </label>
+                  <label>
+                    Reorder point
+                    <input type="number" min="0" step="any" value={draft.reorderPoint} onChange={(event) => setDraft({ ...draft, reorderPoint: event.target.value })} required />
+                  </label>
+                </>
+              )}
+              <label>
+                Storage location
+                <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} placeholder="Main storage room" />
+              </label>
+              <label className="logistics-notes-field">
+                Notes
+                <input value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Preferred brand or supplier" />
+              </label>
+              <div className="logistics-form-help">
+                <strong>Example:</strong> 3 boxes × 24 pieces + 5 loose pieces = 77 pieces. Liters, kilograms, rolls, bottles, and whole bags can also be tracked directly.
+              </div>
+              <div className="logistics-overlay-actions">
+                <button type="button" className="secondary" onClick={() => setAddItemOpen(false)}>Cancel</button>
+                <button type="submit">Add Item</button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      ) : null}
     </div>
   );
 }
