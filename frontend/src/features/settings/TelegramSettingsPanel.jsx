@@ -4,7 +4,7 @@ export default function TelegramSettingsPanel({ settings, setSettings, onSave })
       <div className="section-head">
         <div>
           <h2>Telegram Control</h2>
-          <p>Telegram delivery settings are stored in MongoDB. Set the single Telegram chat ID that should receive birthday messages.</p>
+          <p>Use one bot token with two separate destinations: one chat for birthdays and another for logistics reorder reminders.</p>
         </div>
       </div>
       <form onSubmit={onSave} className="grid-form">
@@ -25,6 +25,15 @@ export default function TelegramSettingsPanel({ settings, setSettings, onSave })
             onChange={(event) => setSettings({ ...settings, birthdayChatId: event.target.value })}
             placeholder="-1001234567890"
           />
+        </label>
+        <label>
+          Logistics chat ID
+          <input
+            value={settings.logisticsChatId}
+            onChange={(event) => setSettings({ ...settings, logisticsChatId: event.target.value })}
+            placeholder="-1009876543210"
+          />
+          <span className="helper-text">Low-stock reminders are sent here without changing the birthday chat.</span>
         </label>
         <div className="settings-note">
           <span>Bot token configured</span>

@@ -43,6 +43,7 @@ export default function HomePage(props) {
     birthdays,
     users,
     settings,
+    logisticsItems,
     setSettings,
     newBirthday,
     setNewBirthday,
@@ -63,6 +64,7 @@ export default function HomePage(props) {
     onOpenAdminBirthdays,
     onOpenAdminUsers,
     onOpenAdminSettings,
+    onOpenLogistics,
     onBackToAdminHome
   } = props;
 
@@ -154,6 +156,14 @@ export default function HomePage(props) {
       </section>
 
       {isAdmin ? <AdminSummary summary={me.summary} /> : null}
+
+      {isAdmin && logisticsItems.some((item) => item.isLowStock) ? (
+        <button type="button" className="home-logistics-alert" onClick={onOpenLogistics}>
+          <span aria-hidden="true">!</span>
+          <strong>{logisticsItems.filter((item) => item.isLowStock).length} logistics item{logisticsItems.filter((item) => item.isLowStock).length === 1 ? '' : 's'} need reordering</strong>
+          <small>Open inventory →</small>
+        </button>
+      ) : null}
 
       <div className="dashboard-section-heading">
         <div>
@@ -251,6 +261,12 @@ export default function HomePage(props) {
               </div>
             </div>
             <div className="module-grid blood-drive-module-grid admin-tools-module-grid">
+              <ModuleCard
+                title="Logistics Inventory"
+                description="Track stock, set reorder points, and manage website and Telegram low-stock reminders."
+                icon={<div className="module-icon-text">📦</div>}
+                onClick={onOpenLogistics}
+              />
               <ModuleCard
                 title="Birthdays"
                 description="Manage birthday records, activation state, and member birthday data on a dedicated page."

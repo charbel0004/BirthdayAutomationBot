@@ -3,6 +3,7 @@ export const pages = {
   adminBirthdays: 'admin-birthdays',
   adminUsers: 'admin-users',
   adminSettings: 'admin-settings',
+  logistics: 'logistics',
   certificateGenerator: 'certificate-generator',
   bloodDrive: 'blood-drive',
   eligibleDonors: 'eligible-donors',
@@ -51,6 +52,7 @@ const routeToPage = {
   'admin-birthdays': pages.adminBirthdays,
   'admin-users': pages.adminUsers,
   'admin-settings': pages.adminSettings,
+  logistics: pages.logistics,
   'certificate-generator': pages.certificateGenerator,
   'quete-shift-setup': pages.queteShiftSetup,
   'quete-report': pages.queteReport,
@@ -78,8 +80,29 @@ export function createDefaultSettings() {
   return {
     botToken: '',
     birthdayChatId: '',
+    logisticsChatId: '',
     timezone: 'Asia/Beirut',
     hasBotToken: false
+  };
+}
+
+export function createEmptyLogisticsItem() {
+  return {
+    name: '',
+    category: 'daily-use',
+    quantity: 0,
+    unit: 'units',
+    reorderPoint: 0,
+    usesPackages: false,
+    packageUnit: '',
+    unitsPerPackage: '',
+    packageQuantity: 0,
+    looseQuantity: 0,
+    reorderPackageQuantity: 0,
+    reorderLooseQuantity: 0,
+    location: '',
+    notes: '',
+    active: true
   };
 }
 

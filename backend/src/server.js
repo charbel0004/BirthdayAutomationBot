@@ -11,6 +11,7 @@ const {
   connectToDatabase,
   DATABASE_NAME,
   donationLocationsCollection,
+  logisticsItemsCollection,
   normalizeName,
   now,
   queteReservationsCollection,
@@ -24,7 +25,7 @@ const {
   toObjectId,
   usersCollection
 } = require('./db');
-const { startBirthdayScheduler, runBirthdayCheck } = require('./scheduler');
+const { startBirthdayScheduler, runBirthdayCheck, runLogisticsCheck } = require('./scheduler');
 const { readTelegramSettings, writeTelegramSettings } = require('./settings');
 const { dataFile } = require('./store');
 const { generateCertificates } = require('./certificate-generator');
@@ -67,6 +68,7 @@ const certificateUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024, files: 1 }
 });
 const QUETE_SHIFT_TYPES = new Set(['morning', 'afternoon']);
+const LOGISTICS_CATEGORIES = new Set(['cleaning', 'events', 'activities', 'daily-use', 'other']);
 const QUETE_TIMEZONE = process.env.QUETE_TIMEZONE || process.env.BOT_TIMEZONE || 'Asia/Beirut';
 const QUETE_SHIFT_CATEGORIES = {
   road: 1,
@@ -386,6 +388,26 @@ function sanitizeBirthday(entry) {
   };
 }
 
+function sanitizeLogisticsItem(entry) {
+  const isLowStock = entry.active !== false && Number(entry.quantity) <= Number(entry.reorderPoint);
+  return {
+    id: String(entry._id),
+    name: entry.name,
+    category: entry.category,
+    quantity: Number(entry.quantity),
+    unit: entry.unit || '',
+    packageUnit: entry.packageUnit || '',
+    unitsPerPackage: entry.unitsPerPackage ? Number(entry.unitsPerPackage) : null,
+    reorderPoint: Number(entry.reorderPoint),
+    location: entry.location || '',
+    notes: entry.notes || '',
+    active: entry.active !== false,
+    isLowStock,
+    createdAt: entry.createdAt || null,
+    updatedAt: entry.updatedAt || null
+  };
+}
+
 function sanitizeBloodDonor(entry) {
   const computedAge = calculateAgeFromDateOfBirth(entry.dateOfBirth);
   const derivedCallStatus = entry.callStatus || (entry.contacted ? (entry.willingToDonate ? 'upcoming' : 'not-willing') : '');
@@ -638,6 +660,12 @@ async function getBirthdayById(id) {
   return birthdaysCollection().findOne({ _id: birthdayId });
 }
 
+async function getLogisticsItemById(id) {
+  const itemId = toObjectId(id);
+  if (!itemId) return null;
+  return logisticsItemsCollection().findOne({ _id: itemId });
+}
+
 async function getBloodDonorById(id) {
   const donorId = toObjectId(id);
   if (!donorId) return null;
@@ -797,6 +825,8 @@ async function buildDashboardSummary() {
     totalNewRecruits,
     totalBirthdays,
     activeBirthdays,
+    totalLogisticsItems,
+    lowStockLogisticsItems,
     totalBloodDonors,
     eligibleBloodDonors,
     totalQueteShifts,
@@ -812,6 +842,11 @@ async function buildDashboardSummary() {
     usersCollection().countDocuments({ role: 'new recruit' }),
     birthdaysCollection().countDocuments(),
     birthdaysCollection().countDocuments({ active: true }),
+    logisticsItemsCollection().countDocuments({ active: { $ne: false } }),
+    logisticsItemsCollection().countDocuments({
+      active: { $ne: false },
+      $expr: { $lte: ['$quantity', '$reorderPoint'] }
+    }),
     bloodDonorsCollection().countDocuments(),
     bloodDonorsCollection().countDocuments({ nextEligibleDonationDate: { $lte: today } }),
     queteShiftsCollection().countDocuments({ isActive: { $ne: false } }),
@@ -829,6 +864,8 @@ async function buildDashboardSummary() {
     totalNewRecruits,
     totalBirthdays,
     activeBirthdays,
+    totalLogisticsItems,
+    lowStockLogisticsItems,
     totalBloodDonors,
     eligibleBloodDonors,
     totalQueteShifts,
@@ -1213,6 +1250,9 @@ app.get('/api/health', async (req, res) => {
     telegramSettingsStore: 'mongodb',
     telegramConfigured: Boolean(
       telegram.botToken && telegram.birthdayChatId
+    ),
+    logisticsTelegramConfigured: Boolean(
+      telegram.botToken && telegram.logisticsChatId
     )
   });
 });
@@ -1476,7 +1516,8 @@ app.get('/api/me', async (req, res) => {
     telegram: {
       timezone: telegram.timezone,
       hasBotToken: Boolean(telegram.botToken),
-      birthdayChatId: telegram.birthdayChatId
+      birthdayChatId: telegram.birthdayChatId,
+      logisticsChatId: telegram.logisticsChatId
     },
     ownBirthdays: ownBirthdays.map(sanitizeBirthday)
   });
@@ -1739,6 +1780,153 @@ app.delete('/api/birthdays/:id', async (req, res) => {
   }
 
   await birthdaysCollection().deleteOne({ _id: birthday._id });
+  return res.status(204).send();
+});
+
+app.get('/api/logistics', requireRole('admin'), async (req, res) => {
+  const items = await logisticsItemsCollection()
+    .find({})
+    .sort({ category: 1, name: 1 })
+    .toArray();
+  res.json(items.map(sanitizeLogisticsItem));
+});
+
+app.post('/api/logistics', requireRole('admin'), async (req, res) => {
+  const {
+    name,
+    category = 'daily-use',
+    quantity = 0,
+    unit = 'units',
+    packageUnit = '',
+    unitsPerPackage = null,
+    reorderPoint = 0,
+    location = '',
+    notes = '',
+    active = true
+  } = req.body || {};
+  const trimmedName = String(name || '').trim();
+  const normalizedCategory = String(category || '').trim().toLowerCase();
+  const numericQuantity = Number(quantity);
+  const numericReorderPoint = Number(reorderPoint);
+  const trimmedPackageUnit = String(packageUnit || '').trim();
+  const numericUnitsPerPackage = unitsPerPackage === null || unitsPerPackage === ''
+    ? null
+    : Number(unitsPerPackage);
+
+  if (!trimmedName) {
+    return res.status(400).json({ error: 'Please enter an item name.' });
+  }
+  if (!LOGISTICS_CATEGORIES.has(normalizedCategory)) {
+    return res.status(400).json({ error: 'Please choose a valid logistics category.' });
+  }
+  if (!Number.isFinite(numericQuantity) || numericQuantity < 0) {
+    return res.status(400).json({ error: 'Quantity must be zero or greater.' });
+  }
+  if (!Number.isFinite(numericReorderPoint) || numericReorderPoint < 0) {
+    return res.status(400).json({ error: 'Reorder point must be zero or greater.' });
+  }
+  if (trimmedPackageUnit && (!Number.isFinite(numericUnitsPerPackage) || numericUnitsPerPackage <= 0)) {
+    return res.status(400).json({ error: 'Enter how many base units are in each package.' });
+  }
+  if (!trimmedPackageUnit && numericUnitsPerPackage !== null) {
+    return res.status(400).json({ error: 'Enter a package name, such as box or bag.' });
+  }
+
+  const duplicate = await logisticsItemsCollection().findOne({ normalizedName: normalizeName(trimmedName) });
+  if (duplicate) {
+    return res.status(409).json({ error: 'A logistics item with this name already exists.' });
+  }
+
+  const timestamp = now();
+  const item = {
+    name: trimmedName,
+    normalizedName: normalizeName(trimmedName),
+    category: normalizedCategory,
+    quantity: numericQuantity,
+    unit: String(unit || '').trim(),
+    packageUnit: trimmedPackageUnit,
+    unitsPerPackage: trimmedPackageUnit ? numericUnitsPerPackage : null,
+    reorderPoint: numericReorderPoint,
+    location: String(location || '').trim(),
+    notes: String(notes || '').trim(),
+    active: Boolean(active),
+    createdBy: req.account.username,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  const result = await logisticsItemsCollection().insertOne(item);
+  return res.status(201).json(sanitizeLogisticsItem({ ...item, _id: result.insertedId }));
+});
+
+app.put('/api/logistics/:id', requireRole('admin'), async (req, res) => {
+  const item = await getLogisticsItemById(req.params.id);
+  if (!item) {
+    return res.status(404).json({ error: 'The selected logistics item could not be found.' });
+  }
+
+  const updates = { updatedAt: now() };
+  if (req.body?.name !== undefined) {
+    const trimmedName = String(req.body.name || '').trim();
+    if (!trimmedName) return res.status(400).json({ error: 'Please enter an item name.' });
+    const duplicate = await logisticsItemsCollection().findOne({
+      _id: { $ne: item._id },
+      normalizedName: normalizeName(trimmedName)
+    });
+    if (duplicate) return res.status(409).json({ error: 'A logistics item with this name already exists.' });
+    updates.name = trimmedName;
+    updates.normalizedName = normalizeName(trimmedName);
+  }
+  if (req.body?.category !== undefined) {
+    const category = String(req.body.category || '').trim().toLowerCase();
+    if (!LOGISTICS_CATEGORIES.has(category)) {
+      return res.status(400).json({ error: 'Please choose a valid logistics category.' });
+    }
+    updates.category = category;
+  }
+  for (const field of ['quantity', 'reorderPoint']) {
+    if (req.body?.[field] !== undefined) {
+      const value = Number(req.body[field]);
+      if (!Number.isFinite(value) || value < 0) {
+        return res.status(400).json({ error: `${field === 'quantity' ? 'Quantity' : 'Reorder point'} must be zero or greater.` });
+      }
+      updates[field] = value;
+    }
+  }
+  for (const field of ['unit', 'location', 'notes']) {
+    if (req.body?.[field] !== undefined) updates[field] = String(req.body[field] || '').trim();
+  }
+  if (req.body?.packageUnit !== undefined || req.body?.unitsPerPackage !== undefined) {
+    const packageUnit = req.body?.packageUnit !== undefined
+      ? String(req.body.packageUnit || '').trim()
+      : String(item.packageUnit || '').trim();
+    const rawUnitsPerPackage = req.body?.unitsPerPackage !== undefined
+      ? req.body.unitsPerPackage
+      : item.unitsPerPackage;
+    const unitsPerPackage = rawUnitsPerPackage === null || rawUnitsPerPackage === ''
+      ? null
+      : Number(rawUnitsPerPackage);
+
+    if (packageUnit && (!Number.isFinite(unitsPerPackage) || unitsPerPackage <= 0)) {
+      return res.status(400).json({ error: 'Enter how many base units are in each package.' });
+    }
+    if (!packageUnit && unitsPerPackage !== null) {
+      return res.status(400).json({ error: 'Enter a package name, such as box or bag.' });
+    }
+    updates.packageUnit = packageUnit;
+    updates.unitsPerPackage = packageUnit ? unitsPerPackage : null;
+  }
+  if (typeof req.body?.active === 'boolean') updates.active = req.body.active;
+
+  await logisticsItemsCollection().updateOne({ _id: item._id }, { $set: updates });
+  const updated = await logisticsItemsCollection().findOne({ _id: item._id });
+  return res.json(sanitizeLogisticsItem(updated));
+});
+
+app.delete('/api/logistics/:id', requireRole('admin'), async (req, res) => {
+  const itemId = toObjectId(req.params.id);
+  if (!itemId) return res.status(404).json({ error: 'The selected logistics item could not be found.' });
+  const result = await logisticsItemsCollection().deleteOne({ _id: itemId });
+  if (!result.deletedCount) return res.status(404).json({ error: 'The selected logistics item could not be found.' });
   return res.status(204).send();
 });
 
@@ -3265,26 +3453,32 @@ app.get('/api/settings', requireRole('admin'), async (req, res) => {
   res.json({
     botToken: telegram.botToken,
     birthdayChatId: telegram.birthdayChatId,
+    logisticsChatId: telegram.logisticsChatId,
     birthdayMessageTemplate: telegram.birthdayMessageTemplate,
+    logisticsMessageTemplate: telegram.logisticsMessageTemplate,
     timezone: telegram.timezone,
     hasBotToken: Boolean(telegram.botToken)
   });
 });
 
 app.put('/api/settings', requireRole('admin'), async (req, res) => {
-  const { botToken, birthdayChatId } = req.body || {};
+  const { botToken, birthdayChatId, logisticsChatId } = req.body || {};
 
   const updated = await writeTelegramSettings({
     botToken:
       typeof botToken === 'string' ? botToken.trim() : undefined,
     birthdayChatId:
-      typeof birthdayChatId === 'string' ? birthdayChatId.trim() : undefined
+      typeof birthdayChatId === 'string' ? birthdayChatId.trim() : undefined,
+    logisticsChatId:
+      typeof logisticsChatId === 'string' ? logisticsChatId.trim() : undefined
   });
 
   res.json({
     botToken: updated.botToken,
     birthdayChatId: updated.birthdayChatId,
+    logisticsChatId: updated.logisticsChatId,
     birthdayMessageTemplate: updated.birthdayMessageTemplate,
+    logisticsMessageTemplate: updated.logisticsMessageTemplate,
     timezone: updated.timezone,
     hasBotToken: Boolean(updated.botToken)
   });
@@ -3293,6 +3487,15 @@ app.put('/api/settings', requireRole('admin'), async (req, res) => {
 app.post('/api/birthdays/run-now', requireRole('admin'), async (req, res) => {
   try {
     const result = await runBirthdayCheck();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/logistics/run-now', requireRole('admin'), async (req, res) => {
+  try {
+    const result = await runLogisticsCheck({ force: true });
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -1,4 +1,4 @@
-const { birthdaysCollection } = require('./db');
+const { birthdaysCollection, logisticsItemsCollection } = require('./db');
 const {
   claimBirthdayDelivery,
   readTelegramSettings,
@@ -33,6 +33,45 @@ function getTodayParts(timezone) {
 
 function buildBirthdayMessage(template, member) {
   return template.replace('{name}', member.name);
+}
+
+function formatStockAmount(value) {
+  return Number.isInteger(value) ? String(value) : Number(value).toFixed(2).replace(/\.?0+$/, '');
+}
+
+function pluralizeUnit(value, amount) {
+  const unit = String(value || '').trim();
+  if (!unit || Number(amount) === 1 || unit.endsWith('s')) return unit;
+  if (/(s|x|z|ch|sh)$/i.test(unit)) return `${unit}es`;
+  if (/[^aeiou]y$/i.test(unit)) return `${unit.slice(0, -1)}ies`;
+  return `${unit}s`;
+}
+
+function describeStockAmount(value, item) {
+  const amount = Number(value);
+  const unit = item.unit ? ` ${item.unit}` : '';
+  const packageSize = Number(item.unitsPerPackage);
+
+  if (!item.packageUnit || !Number.isFinite(packageSize) || packageSize <= 0) {
+    return `${formatStockAmount(amount)}${unit}`;
+  }
+
+  const packages = Math.floor(amount / packageSize);
+  const looseUnits = Number((amount - packages * packageSize).toFixed(6));
+  const parts = [];
+  if (packages) parts.push(`${formatStockAmount(packages)} ${pluralizeUnit(item.packageUnit, packages)}`);
+  if (looseUnits || !packages) parts.push(`${formatStockAmount(looseUnits)}${unit}`);
+  return `${parts.join(' + ')} (${formatStockAmount(amount)}${unit} total)`;
+}
+
+function buildLogisticsMessage(template, items) {
+  const itemLines = items
+    .map((item) => {
+      return `• ${item.name}: ${describeStockAmount(item.quantity, item)} remaining (reorder at ${describeStockAmount(item.reorderPoint, item)})`;
+    })
+    .join('\n');
+
+  return template.replace('{items}', itemLines);
 }
 
 function isLeapYear(year) {
@@ -147,6 +186,84 @@ async function runBirthdayCheck({ force = false } = {}) {
   };
 }
 
+async function runLogisticsCheck({ force = false } = {}) {
+  const telegram = await readTelegramSettings();
+  const timezone = telegram.timezone || 'Asia/Beirut';
+  const { isoDate } = getTodayParts(timezone);
+
+  if (!force && telegram.logisticsLastRunDate === isoDate) {
+    return { skipped: true, reason: 'Already run today', date: isoDate, lowStockItems: [] };
+  }
+
+  const lowStockItems = await logisticsItemsCollection()
+    .find({
+      active: { $ne: false },
+      $expr: { $lte: ['$quantity', '$reorderPoint'] }
+    })
+    .sort({ category: 1, name: 1 })
+    .toArray();
+
+  const sanitizedItems = lowStockItems.map((item) => ({
+    id: String(item._id),
+    name: item.name,
+    category: item.category,
+    quantity: item.quantity,
+    reorderPoint: item.reorderPoint,
+    unit: item.unit,
+    packageUnit: item.packageUnit || '',
+    unitsPerPackage: item.unitsPerPackage || null
+  }));
+
+  if (lowStockItems.length > 0) {
+    if (!telegram.botToken) {
+      return {
+        skipped: false,
+        date: isoDate,
+        lowStockItems: sanitizedItems,
+        error: 'Missing Telegram bot token'
+      };
+    }
+
+    if (!telegram.logisticsChatId) {
+      return {
+        skipped: false,
+        date: isoDate,
+        lowStockItems: sanitizedItems,
+        error: 'Missing Telegram logistics chat ID'
+      };
+    }
+
+    const template = telegram.logisticsMessageTemplate || defaultLogisticsMessageTemplate;
+    try {
+      await sendTelegramMessage({
+        botToken: telegram.botToken,
+        chatId: telegram.logisticsChatId,
+        text: buildLogisticsMessage(template, lowStockItems)
+      });
+    } catch (error) {
+      return {
+        skipped: false,
+        date: isoDate,
+        lowStockItems: sanitizedItems,
+        error: error.message
+      };
+    }
+  }
+
+  await writeTelegramSettings({ logisticsLastRunDate: isoDate });
+
+  return {
+    skipped: false,
+    date: isoDate,
+    lowStockItems: sanitizedItems,
+    sent: lowStockItems.length > 0,
+    chatId: lowStockItems.length > 0 ? telegram.logisticsChatId : undefined
+  };
+}
+
+const defaultLogisticsMessageTemplate =
+  '📦 Logistics reorder reminder\n\nThe following items are at or below their reorder point:\n{items}\n\nPlease review the logistics inventory.';
+
 function getDelayUntilNextMidnightMs(timezone) {
   const now = new Date();
   const zonedNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
@@ -157,14 +274,21 @@ function getDelayUntilNextMidnightMs(timezone) {
 }
 
 function startBirthdayScheduler() {
-  runBirthdayCheck()
-    .then((result) => {
-      if (result?.error) {
-        console.error('[birthday-check] startup run incomplete:', result.error);
+  (async () => {
+    const birthdayResult = await runBirthdayCheck();
+    const logisticsResult = await runLogisticsCheck();
+    return [birthdayResult, logisticsResult];
+  })()
+    .then(([birthdayResult, logisticsResult]) => {
+      if (birthdayResult?.error) {
+        console.error('[birthday-check] startup run incomplete:', birthdayResult.error);
+      }
+      if (logisticsResult?.error) {
+        console.error('[logistics-check] startup run incomplete:', logisticsResult.error);
       }
     })
     .catch((err) => {
-      console.error('[birthday-check] startup run failed:', err.message);
+      console.error('[reminder-check] startup run failed:', err.message);
     });
 
   let timeoutId;
@@ -182,9 +306,13 @@ function startBirthdayScheduler() {
 
       timeoutId = setTimeout(async () => {
         try {
-          const result = await runBirthdayCheck();
-          if (result?.error) {
-            console.error('[birthday-check] scheduled run incomplete:', result.error);
+          const birthdayResult = await runBirthdayCheck();
+          const logisticsResult = await runLogisticsCheck();
+          if (birthdayResult?.error) {
+            console.error('[birthday-check] scheduled run incomplete:', birthdayResult.error);
+          }
+          if (logisticsResult?.error) {
+            console.error('[logistics-check] scheduled run incomplete:', logisticsResult.error);
           }
         } catch (error) {
           console.error('[birthday-check] scheduled run failed:', error.message);
@@ -210,5 +338,6 @@ function startBirthdayScheduler() {
 
 module.exports = {
   runBirthdayCheck,
+  runLogisticsCheck,
   startBirthdayScheduler
 };

@@ -13,6 +13,7 @@ let database;
 const REQUIRED_COLLECTIONS = [
   'users',
   'birthdays',
+  'logistics_items',
   'app_settings',
   'blood_donors',
   'donation_locations',
@@ -40,6 +41,10 @@ function usersCollection() {
 
 function birthdaysCollection() {
   return getDb().collection('birthdays');
+}
+
+function logisticsItemsCollection() {
+  return getDb().collection('logistics_items');
 }
 
 function bloodDonorsCollection() {
@@ -126,6 +131,9 @@ async function ensureIndexes() {
     usersCollection().createIndex({ username: 1 }, { unique: true }),
     birthdaysCollection().createIndex({ normalizedName: 1, birthdate: 1 }, { unique: true }),
     birthdaysCollection().createIndex({ userId: 1 }),
+    logisticsItemsCollection().createIndex({ normalizedName: 1 }, { unique: true }),
+    logisticsItemsCollection().createIndex({ category: 1, name: 1 }),
+    logisticsItemsCollection().createIndex({ active: 1, quantity: 1, reorderPoint: 1 }),
     bloodDonorsCollection().createIndex({ userId: 1 }),
     bloodDonorsCollection().createIndex({ normalizedFullName: 1 }),
     bloodDonorsCollection().createIndex({ normalizedPhoneNumber: 1 }),
@@ -264,6 +272,7 @@ module.exports = {
   DATABASE_NAME,
   donationLocationsCollection,
   getDb,
+  logisticsItemsCollection,
   normalizeName,
   now,
   queteReservationsCollection,

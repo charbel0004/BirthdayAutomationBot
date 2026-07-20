@@ -21,6 +21,7 @@ import {
   createDefaultSettings,
   createEmptyBirthday,
   createEmptyDonorStats,
+  createEmptyLogisticsItem,
   createEmptyQueteData,
   createEmptyQueteShift,
   createEmptyPresentationData,
@@ -46,12 +47,14 @@ const RecruitmentRouter = lazy(() => import('./pages/RecruitmentRouter'));
 const PresentationRouter = lazy(() => import('./pages/PresentationRouter'));
 const QueteRouter = lazy(() => import('./pages/QueteRouter'));
 const CertificateGeneratorPage = lazy(() => import('./pages/CertificateGeneratorPage'));
+const LogisticsPage = lazy(() => import('./pages/LogisticsPage'));
 
 const breadcrumbConfig = {
   [pages.home]: { label: 'Home' },
   [pages.adminBirthdays]: { label: 'Birthday Records', parent: pages.home },
   [pages.adminUsers]: { label: 'Users & Roles', parent: pages.home },
   [pages.adminSettings]: { label: 'Telegram Settings', parent: pages.home },
+  [pages.logistics]: { label: 'Logistics Inventory', parent: pages.home },
   [pages.bloodDrive]: { label: 'Blood Drive', parent: pages.home },
   [pages.eligibleDonors]: { label: 'Eligible Donors', parent: pages.bloodDrive },
   [pages.repository]: { label: 'Donor Records', parent: pages.bloodDrive },
@@ -81,6 +84,8 @@ export default function App() {
   const [birthdays, setBirthdays] = useState([]);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState(createDefaultSettings);
+  const [logisticsItems, setLogisticsItems] = useState([]);
+  const [newLogisticsItem, setNewLogisticsItem] = useState(createEmptyLogisticsItem);
   const [newBirthday, setNewBirthday] = useState(createEmptyBirthday);
   const [newUser, setNewUser] = useState(createEmptyUser);
   const [birthdayOverlayOpen, setBirthdayOverlayOpen] = useState(false);
@@ -217,6 +222,7 @@ export default function App() {
       if (isAdmin) {
         requestEntries.push(['users', api('/api/users', { token })]);
         requestEntries.push(['settings', api('/api/settings', { token })]);
+        requestEntries.push(['logistics', api('/api/logistics', { token })]);
       }
 
       const settled = await Promise.allSettled(requestEntries.map(([, request]) => request));
@@ -262,15 +268,18 @@ export default function App() {
 
       if (isAdmin) {
         setUsers(payloads.users || []);
+        setLogisticsItems(payloads.logistics || []);
         setSettings({
           botToken: payloads.settings?.botToken || '',
           birthdayChatId: payloads.settings?.birthdayChatId || '',
+          logisticsChatId: payloads.settings?.logisticsChatId || '',
           timezone: payloads.settings?.timezone || 'Asia/Beirut',
           hasBotToken: Boolean(payloads.settings?.hasBotToken)
         });
         setPresentationReport(createEmptyPresentationReport());
       } else {
         setUsers([]);
+        setLogisticsItems([]);
         setPresentationReport(isRecruit ? {
           rankings: (payloads.presentation?.presenters || []).map((item) => ({
             presenter: item.user.displayName,
@@ -418,6 +427,7 @@ export default function App() {
       (isRecruitmentPage && !canAccessRecruitment) ||
       (isPresentationPage && !canAccessPresentations) ||
       (isQuetePage && !canAccessQuete) ||
+      (page === pages.logistics && me.user.role !== 'admin') ||
       (page === pages.certificateGenerator && !canAccessCertificateGenerator)
     ) {
       setPage(pages.home);
@@ -582,13 +592,15 @@ export default function App() {
         method: 'PUT',
         body: {
           botToken: settings.botToken,
-          birthdayChatId: settings.birthdayChatId
+          birthdayChatId: settings.birthdayChatId,
+          logisticsChatId: settings.logisticsChatId
         }
       });
       setSettings((current) => ({
         ...current,
         botToken: payload.botToken || '',
         birthdayChatId: payload.birthdayChatId || '',
+        logisticsChatId: payload.logisticsChatId || '',
         timezone: payload.timezone || current.timezone,
         hasBotToken: Boolean(payload.hasBotToken)
       }));
@@ -603,6 +615,67 @@ export default function App() {
     try {
       const result = await api('/api/birthdays/run-now', { token, method: 'POST' });
       showNotice(formatBirthdayRunMessage(result.matched));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const refreshLogistics = async () => {
+    const payload = await api('/api/logistics', { token });
+    setLogisticsItems(payload);
+    return payload;
+  };
+
+  const createLogisticsItem = async (payload) => {
+    setError('');
+    try {
+      await api('/api/logistics', {
+        token,
+        method: 'POST',
+        body: payload
+      });
+      setNewLogisticsItem(createEmptyLogisticsItem());
+      await refreshLogistics();
+      showNotice('Logistics item added successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const updateLogisticsItem = async (id, payload) => {
+    try {
+      await api(`/api/logistics/${id}`, { token, method: 'PUT', body: payload });
+      await refreshLogistics();
+      showNotice('Inventory updated successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const deleteLogisticsItem = async (id) => {
+    if (!window.confirm('Delete this logistics item?')) return;
+    try {
+      await api(`/api/logistics/${id}`, { token, method: 'DELETE' });
+      await refreshLogistics();
+      showNotice('Logistics item deleted successfully.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const runLogisticsNow = async () => {
+    setError('');
+    try {
+      const result = await api('/api/logistics/run-now', { token, method: 'POST' });
+      if (!result.lowStockItems?.length) {
+        showNotice('Logistics check completed. No items need reordering.');
+        return;
+      }
+      if (result.error) {
+        setError(`Low-stock items were found, but Telegram could not send: ${result.error}`);
+        return;
+      }
+      showNotice(`Logistics reminder sent for ${result.lowStockItems.length} item${result.lowStockItems.length === 1 ? '' : 's'}.`);
     } catch (err) {
       setError(err.message);
     }
@@ -1388,6 +1461,7 @@ export default function App() {
   const memberBirthday = birthdays[0] || null;
   const primaryNavigation = [
     { page: pages.home, label: 'Overview', visible: true },
+    { page: pages.logistics, label: 'Logistics', visible: isAdmin },
     { page: pages.bloodDrive, label: 'Blood Drive', visible: canAccessBloodDrive },
     { page: pages.recruitment, label: 'Recruitment', visible: canAccessRecruitment },
     { page: pages.presentations, label: 'Presentations', visible: canAccessPresentations },
@@ -1415,6 +1489,20 @@ export default function App() {
   }
 
   const renderPage = () => {
+    if (page === pages.logistics && isAdmin) {
+      return (
+        <LogisticsPage
+          items={logisticsItems}
+          draft={newLogisticsItem}
+          setDraft={setNewLogisticsItem}
+          onCreate={createLogisticsItem}
+          onSave={updateLogisticsItem}
+          onDelete={deleteLogisticsItem}
+          onSendReminder={runLogisticsNow}
+        />
+      );
+    }
+
     if (page === pages.certificateGenerator && canAccessCertificateGenerator) {
       return (
         <CertificateGeneratorPage
@@ -1569,6 +1657,7 @@ export default function App() {
         birthdays={birthdays}
         users={users}
         settings={settings}
+        logisticsItems={logisticsItems}
         setSettings={setSettings}
         newBirthday={newBirthday}
         setNewBirthday={setNewBirthday}
@@ -1589,6 +1678,7 @@ export default function App() {
         onOpenAdminBirthdays={() => setPage(pages.adminBirthdays)}
         onOpenAdminUsers={() => setPage(pages.adminUsers)}
         onOpenAdminSettings={() => setPage(pages.adminSettings)}
+        onOpenLogistics={() => setPage(pages.logistics)}
         onBackToAdminHome={() => setPage(pages.home)}
       />
     );

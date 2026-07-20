@@ -13,10 +13,14 @@ const defaultStore = {
     botToken: '6301045712:AAH1d6UMvi3svtE-_F6fYe-edugM4XnpBsY',
     membersGroupChatId: '-1001385895626',
     newRecruitsGroupChatId: '',
+    logisticsChatId: '',
     birthdayMessageTemplate:
       'Happy Birthday, {name}! 🎉🎂 Wishing you an amazing day full of joy and celebration! 🥳✨',
+    logisticsMessageTemplate:
+      '📦 Logistics reorder reminder\n\nThe following items are at or below their reorder point:\n{items}\n\nPlease review the logistics inventory.',
     timezone: process.env.BOT_TIMEZONE || 'Asia/Beirut',
-    lastRunDate: ''
+    lastRunDate: '',
+    logisticsLastRunDate: ''
   },
   members: []
 };
@@ -78,9 +82,12 @@ async function readTelegramSettings() {
     botToken: store.telegram.botToken,
     membersGroupChatId: store.telegram.membersGroupChatId || store.telegram.defaultChatId || '',
     newRecruitsGroupChatId: store.telegram.newRecruitsGroupChatId || '',
+    logisticsChatId: store.telegram.logisticsChatId || '',
     birthdayMessageTemplate: store.telegram.birthdayMessageTemplate,
+    logisticsMessageTemplate: store.telegram.logisticsMessageTemplate,
     timezone: store.telegram.timezone,
-    lastRunDate: store.telegram.lastRunDate
+    lastRunDate: store.telegram.lastRunDate,
+    logisticsLastRunDate: store.telegram.logisticsLastRunDate
   };
 }
 
