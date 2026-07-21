@@ -1378,15 +1378,31 @@ label {
 
 .quete-shift-modal {
   z-index: 60;
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .quete-shift-modal-card {
   width: min(760px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
 }
 
 .quete-shift-modal-card > .modal-head {
+  position: sticky;
+  top: -24px;
+  z-index: 5;
   align-items: flex-start;
-  margin-bottom: 16px;
+  margin: -24px -24px 16px;
+  padding: 24px;
+  border-bottom: 1px solid #e2e8ec;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(16px);
 }
 
 .quete-shift-modal-card > .modal-head h2 {
@@ -4805,6 +4821,12 @@ textarea:focus-visible {
 
   .quete-shift-modal-card {
     max-height: calc(100dvh - 16px);
+    padding: 14px;
+  }
+
+  .quete-shift-modal-card > .modal-head {
+    top: -14px;
+    margin: -14px -14px 14px;
     padding: 14px;
   }
 }

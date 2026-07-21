@@ -114,6 +114,23 @@ function formatDateOnly(value) {
   return new Date(value).toISOString().slice(0, 10);
 }
 
+function getDateKeyInTimeZone(value, timeZone) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+}
+
 function isValidDateKey(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
 }
@@ -505,7 +522,7 @@ function sanitizeQueteShift(shift, reservations = [], usersMap = new Map(), opti
   const reservedCount = reservations.length;
   const shiftCategory = shift.shiftCategory || 'road';
   const includeReservations = options.includeReservations === true;
-  const today = formatDateOnly(now());
+  const today = getDateKeyInTimeZone(now(), QUETE_TIMEZONE);
   const bookingOpensOn = shift.bookingOpensOn || '';
   const bookingClosesOn = shift.bookingClosesOn || '';
   const reservationWindowOpen =
@@ -919,7 +936,7 @@ async function buildQueteDashboard(account) {
   }, new Map());
 
   const canManage = isQueteManager(account);
-  const today = formatDateOnly(now());
+  const today = getDateKeyInTimeZone(now(), QUETE_TIMEZONE);
   const shiftPayload = shifts.map((shift) =>
     sanitizeQueteShift(
       shift,
@@ -2894,7 +2911,7 @@ app.post('/api/quete/shifts/:id/reserve', requireQueteAccess, async (req, res) =
     return res.status(409).json({ error: 'You already reserved this shift.' });
   }
 
-  const today = formatDateOnly(now());
+  const today = getDateKeyInTimeZone(now(), QUETE_TIMEZONE);
   if (shift.bookingOpensOn && shift.bookingOpensOn > today) {
     return res.status(409).json({ error: 'Reservations for this shift are not open yet.' });
   }

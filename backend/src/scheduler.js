@@ -264,13 +264,54 @@ async function runLogisticsCheck({ force = false } = {}) {
 const defaultLogisticsMessageTemplate =
   '📦 Logistics reorder reminder\n\nThe following items are at or below their reorder point:\n{items}\n\nPlease review the logistics inventory.';
 
-function getDelayUntilNextMidnightMs(timezone) {
-  const now = new Date();
-  const zonedNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-  const nextMidnight = new Date(zonedNow);
+function getTimeZoneOffsetMinutes(date, timezone) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = Number(parts.find((part) => part.type === 'year')?.value || 0);
+  const month = Number(parts.find((part) => part.type === 'month')?.value || 1);
+  const day = Number(parts.find((part) => part.type === 'day')?.value || 1);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  const second = Number(parts.find((part) => part.type === 'second')?.value || 0);
+  return (Date.UTC(year, month - 1, day, hour, minute, second) - date.getTime()) / 60000;
+}
 
-  nextMidnight.setHours(24, 0, 5, 0);
-  return nextMidnight.getTime() - zonedNow.getTime();
+function zonedDateTimeToUtc(parts, timezone) {
+  const utcGuess = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour || 0, parts.minute || 0, parts.second || 0);
+  let candidate = new Date(utcGuess);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const offsetMinutes = getTimeZoneOffsetMinutes(candidate, timezone);
+    candidate = new Date(utcGuess - offsetMinutes * 60_000);
+  }
+
+  return candidate;
+}
+
+function getDelayUntilNextMidnightMs(timezone) {
+  const currentDate = new Date();
+  const { isoDate } = getTodayParts(timezone);
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const nextLocalDate = new Date(Date.UTC(year, month - 1, day + 1));
+  const nextMidnightUtc = zonedDateTimeToUtc({
+    year: nextLocalDate.getUTCFullYear(),
+    month: nextLocalDate.getUTCMonth() + 1,
+    day: nextLocalDate.getUTCDate(),
+    hour: 0,
+    minute: 0,
+    second: 5
+  }, timezone);
+
+  return Math.max(1_000, nextMidnightUtc.getTime() - currentDate.getTime());
 }
 
 function startBirthdayScheduler() {

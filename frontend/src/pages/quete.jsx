@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { formatCompactDate, formatDateOnlyLabel, formatDateTime, formatTimeOnlyLabel } from '../lib/app';
 import { MetricBarChart, ModuleCard, QueteIcon } from '../components/common';
 import { pages } from '../lib/state';
+
+const QUETE_TIMEZONE = 'Asia/Beirut';
 
 function getShiftCategoryLabel(category) {
   if (category === 'restaurant') return 'Restaurant';
@@ -75,8 +78,21 @@ function getShiftDateKey(shift) {
   return shift.date || toLocalDateInputValue(shift.startAt);
 }
 
+function getQueteTodayKey() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: QUETE_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+}
+
 function getShiftAvailabilityStatus(shift, isReservedByCurrentUser) {
-  const todayKey = toLocalDateInputValue(new Date());
+  const todayKey = getQueteTodayKey();
   const availableSeats = Math.max(0, Number(shift.availableSeats ?? (Number(shift.capacity || 0) - Number(shift.reservedCount || 0))));
 
   if (isReservedByCurrentUser) return 'reserved';
@@ -130,7 +146,7 @@ function ShiftCard({
   onAssignUser,
   onRemoveReservation
 }) {
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = getQueteTodayKey();
   const reportedAvailableSeats = Number(shift.availableSeats);
   const calculatedAvailableSeats = Number(shift.capacity || 0) - Number(shift.reservedCount || 0);
   const availableSeats = Math.max(
@@ -553,7 +569,7 @@ function QueteCalendarBoard({
         </div>
       )}
 
-      {selectedShift && viewMode === 'calendar' ? (
+      {selectedShift && viewMode === 'calendar' ? createPortal(
         <div className="modal-backdrop quete-shift-modal" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelectedShiftId('');
         }}>
@@ -580,7 +596,8 @@ function QueteCalendarBoard({
               onRemoveReservation={onRemoveReservation}
             />
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </>
   );
