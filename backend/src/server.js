@@ -76,6 +76,7 @@ const QUETE_SHIFT_CATEGORIES = {
   church: 1,
   churchMass: 0.5
 };
+const EXCEL_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function normalizeQueteShiftCategory(value) {
   const normalized = String(value || '').trim();
@@ -151,6 +152,35 @@ function getDateKey(value) {
   return `${year}-${month}-${day}`;
 }
 
+function addDaysToDateKey(dateKey, days) {
+  const [year, month, day] = String(dateKey || '').split('-').map(Number);
+  if (!year || !month || !day) return '';
+  const date = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function getIsoWeekRange(weekKey) {
+  const match = /^(\d{4})-W(0[1-9]|[1-4]\d|5[0-3])$/.exec(String(weekKey || '').trim());
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  const januaryFourth = new Date(Date.UTC(year, 0, 4, 12, 0, 0));
+  const januaryFourthDay = januaryFourth.getUTCDay() || 7;
+  const firstMonday = new Date(januaryFourth);
+  firstMonday.setUTCDate(januaryFourth.getUTCDate() - januaryFourthDay + 1);
+  const weekStart = new Date(firstMonday);
+  weekStart.setUTCDate(firstMonday.getUTCDate() + (week - 1) * 7);
+
+  if (weekStart.getUTCFullYear() > year && week === 53) return null;
+
+  const start = weekStart.toISOString().slice(0, 10);
+  return {
+    start,
+    end: addDaysToDateKey(start, 6)
+  };
+}
+
 function getTimeKey(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -160,6 +190,43 @@ function getTimeKey(value) {
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+
+function getQueteShiftCategoryLabel(category) {
+  if (category === 'restaurant') return 'Restaurant';
+  if (category === 'church') return 'Church';
+  if (category === 'churchMass') return 'Church Mass';
+  return 'Road';
+}
+
+function getQueteShiftTypeLabel(type) {
+  const normalized = String(type || '').trim().toLowerCase();
+  if (!normalized) return '';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function getReportWeekday(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: QUETE_TIMEZONE,
+    weekday: 'long'
+  }).format(date);
+}
+
+function buildWorksheet(rows, headers, columnWidths = []) {
+  const worksheet = XLSX.utils.json_to_sheet(rows, {
+    header: headers,
+    skipHeader: false
+  });
+  worksheet['!autofilter'] = { ref: XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: Math.max(rows.length, 1), c: headers.length - 1 }
+  }) };
+  worksheet['!cols'] = headers.map((header, index) => ({
+    wch: columnWidths[index] || Math.min(Math.max(String(header).length + 4, 12), 28)
+  }));
+  return worksheet;
 }
 
 function getTimeZoneOffsetMinutes(date, timeZone) {
@@ -2572,119 +2639,81 @@ app.get('/api/quete/report/export', requireQueteAccess, async (req, res) => {
         'No Participation'
       );
       const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Type', EXCEL_MIME_TYPE);
       res.setHeader('Content-Disposition', 'attachment; filename="quete-members-with-no-participation.xlsx"');
+      res.setHeader('Content-Length', workbookBuffer.length);
       return res.send(workbookBuffer);
     }
     const requestedMonth = String(req.query.month || '').trim();
+    const requestedWeek = String(req.query.week || '').trim();
     if (requestedMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) {
       return res.status(400).json({ error: 'Report month must use the YYYY-MM format.' });
     }
+    if (requestedMonth && requestedWeek) {
+      return res.status(400).json({ error: 'Choose either a report month or a report week, not both.' });
+    }
+    const requestedWeekRange = requestedWeek ? getIsoWeekRange(requestedWeek) : null;
+    if (requestedWeek && !requestedWeekRange) {
+      return res.status(400).json({ error: 'Report week must use the YYYY-Www format.' });
+    }
     const allShifts = dashboard.admin?.allShifts || dashboard.shifts || [];
-    const reportShifts = requestedMonth
-      ? allShifts.filter((shift) => String(shift.date || '').startsWith(requestedMonth))
-      : allShifts;
-    const totalCapacity = reportShifts.reduce((sum, shift) => sum + Number(shift.capacity || 0), 0);
-    const filledSeats = reportShifts.reduce((sum, shift) => sum + Number(shift.reservedCount || 0), 0);
-    const participantSummary = new Map(
-      (dashboard.admin?.report || []).map((entry) => [entry.user.id, {
-        Name: entry.user.displayName,
-        Role: entry.user.role,
-        'Road shifts': 0,
-        'Restaurant shifts': 0,
-        'Church shifts': 0,
-        'Church masses': 0,
-        'Total shifts taken': 0,
-        'Weighted total': 0,
-        Status: 'No shifts yet'
-      }])
-    );
-    const signupRows = [];
-
-    reportShifts.forEach((shift) => {
-      (shift.reservations || []).forEach((reservation) => {
-        const user = reservation.user || {};
-        const userKey = reservation.userId || user.id || user.displayName || 'unknown';
-        const current = participantSummary.get(userKey) || {
-          Name: user.displayName || user.username || 'Unknown member',
-          Role: user.role || '',
-          'Road shifts': 0,
-          'Restaurant shifts': 0,
-          'Church shifts': 0,
-          'Church masses': 0,
-          'Total shifts taken': 0,
-          'Weighted total': 0
-        };
-        const categoryColumn = {
-          road: 'Road shifts',
-          restaurant: 'Restaurant shifts',
-          church: 'Church shifts',
-          churchMass: 'Church masses'
-        }[shift.shiftCategory || 'road'];
-        if (categoryColumn) current[categoryColumn] += 1;
-        current['Total shifts taken'] += 1;
-        current['Weighted total'] = Number((current['Weighted total'] + Number(shift.shiftValue || 1)).toFixed(2));
-        current.Status = 'Participated';
-        participantSummary.set(userKey, current);
-        signupRows.push({
-          Date: shift.date,
-          Shift: shift.title,
-          'Shift type': shift.shiftType,
-          Category: shift.shiftCategory,
-          Location: shift.location || '',
-          'Member name': current.Name,
-          Role: current.Role,
-          'Signed up at': reservation.createdAt || ''
-        });
-      });
+    const reportShifts = allShifts.filter((shift) => {
+      const shiftDate = String(shift.date || getDateKeyInTimeZone(shift.startAt, QUETE_TIMEZONE) || '').trim();
+      if (requestedMonth) return shiftDate.startsWith(requestedMonth);
+      if (requestedWeekRange) return shiftDate >= requestedWeekRange.start && shiftDate <= requestedWeekRange.end;
+      return true;
     });
-    const summaryRows = [
-      { Metric: 'Report month', Value: requestedMonth || 'All time' },
-      { Metric: 'Total shifts', Value: reportShifts.length },
-      { Metric: 'Total reservations', Value: filledSeats },
-      { Metric: 'Open shifts', Value: reportShifts.filter((shift) => shift.availableSeats > 0).length },
-      { Metric: 'Total focals', Value: dashboard.stats.totalFocals },
-      { Metric: 'Road shifts', Value: reportShifts.filter((shift) => shift.shiftCategory === 'road').length },
-      { Metric: 'Restaurant shifts', Value: reportShifts.filter((shift) => shift.shiftCategory === 'restaurant').length },
-      { Metric: 'Church shifts', Value: reportShifts.filter((shift) => shift.shiftCategory === 'church').length },
-      { Metric: 'Church masses', Value: reportShifts.filter((shift) => shift.shiftCategory === 'churchMass').length },
-      { Metric: 'Total capacity', Value: totalCapacity },
-      { Metric: 'Filled seats', Value: filledSeats },
-      { Metric: 'Available seats', Value: Math.max(0, totalCapacity - filledSeats) },
-      { Metric: 'Occupancy rate (%)', Value: totalCapacity ? Number(((filledSeats / totalCapacity) * 100).toFixed(2)) : 0 },
-      { Metric: 'Unique participants', Value: participantSummary.size }
+    const maxParticipants = Math.max(
+      0,
+      ...reportShifts.map((shift) => (shift.reservations || []).length)
+    );
+    const participantColumns = Array.from({ length: maxParticipants }, (_, index) => `Registered Participant ${index + 1}`);
+    const shiftHeaders = [
+      'Date',
+      'Shift Type',
+      'Category',
+      ...participantColumns
     ];
-
-    const participantRows = Array.from(participantSummary.values())
-      .sort((left, right) => right['Weighted total'] - left['Weighted total'] || left.Name.localeCompare(right.Name));
-
-    const shiftRows = reportShifts.map((shift) => ({
-      Title: shift.title,
-      Date: shift.date,
-      'Shift type': shift.shiftType,
-      Category: shift.shiftCategory,
-      'Shift weight': shift.shiftValue,
-      'Booking opens on': shift.bookingOpensOn || '',
-      'Booking closes on': shift.bookingClosesOn || '',
-      Capacity: shift.capacity,
-      Reserved: shift.reservedCount,
-      'Available seats': shift.availableSeats,
-      'Signed members': (shift.reservations || [])
-        .map((reservation) => reservation.user?.displayName || reservation.user?.username || 'Unknown member')
-        .join(', '),
-      Location: shift.location || '',
-      Notes: shift.notes || ''
-    }));
+    const shiftRows = reportShifts.map((shift) => {
+      const signedMembers = (shift.reservations || [])
+        .map((reservation) => reservation.user?.displayName || reservation.user?.username || 'Unknown member');
+      const row = {
+        Date: shift.date,
+        'Shift Type': getQueteShiftTypeLabel(shift.shiftType),
+        Category: getQueteShiftCategoryLabel(shift.shiftCategory)
+      };
+      participantColumns.forEach((column, index) => {
+        row[column] = signedMembers[index] || '';
+      });
+      return row;
+    });
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Monthly Summary');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(shiftRows), 'All Shifts');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(signupRows), 'Shift Signups');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(participantRows), 'Participation Totals');
+    workbook.Props = {
+      Title: requestedWeek ? 'Quete Weekly Shift Report' : 'Quete Monthly Shift Report',
+      Subject: 'Quete shifts and participants',
+      Author: 'LRCY Jbeil',
+      CreatedDate: now()
+    };
+    XLSX.utils.book_append_sheet(
+      workbook,
+      buildWorksheet(
+        shiftRows,
+        shiftHeaders,
+        [13, 14, 16, ...participantColumns.map(() => 28)]
+      ),
+      requestedWeek ? 'Weekly Shifts' : 'Monthly Shifts'
+    );
     const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const reportFilename = requestedWeek
+      ? `quete-weekly-report-${requestedWeek}.xlsx`
+      : requestedMonth
+        ? `quete-monthly-report-${requestedMonth}.xlsx`
+        : `quete-report-${formatDateOnly(now())}.xlsx`;
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="quete-report-${requestedMonth || formatDateOnly(now())}.xlsx"`);
+    res.setHeader('Content-Type', EXCEL_MIME_TYPE);
+    res.setHeader('Content-Disposition', `attachment; filename="${reportFilename}"`);
+    res.setHeader('Content-Length', workbookBuffer.length);
     res.send(workbookBuffer);
   } catch (error) {
     console.error('Failed to export quete report.', error);

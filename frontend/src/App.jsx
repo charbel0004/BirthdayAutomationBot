@@ -1109,25 +1109,30 @@ export default function App() {
     }
   };
 
-  const exportQueteReport = async (month = '', reportType = 'monthly') => {
+  const exportQueteReport = async (period = '', reportType = 'monthly') => {
     try {
       const isNonParticipantReport = reportType === 'non-participants';
-      const normalizedMonth = /^\d{4}-\d{2}$/.test(month) ? month : '';
+      const isWeeklyReport = reportType === 'weekly';
+      const normalizedMonth = !isWeeklyReport && /^\d{4}-\d{2}$/.test(period) ? period : '';
+      const normalizedWeek = isWeeklyReport && /^\d{4}-W\d{2}$/.test(period) ? period : '';
       const params = new URLSearchParams();
       if (normalizedMonth) params.set('month', normalizedMonth);
+      if (normalizedWeek) params.set('week', normalizedWeek);
       if (isNonParticipantReport) params.set('type', 'non-participants');
       const query = params.toString() ? `?${params.toString()}` : '';
       await downloadFile(`/api/quete/report/export${query}`, {
         token,
         filename: isNonParticipantReport
           ? 'quete-members-with-no-participation.xlsx'
+          : normalizedWeek
+            ? `quete-weekly-report-${normalizedWeek}.xlsx`
           : normalizedMonth
-            ? `quete-report-${normalizedMonth}.xlsx`
+            ? `quete-monthly-report-${normalizedMonth}.xlsx`
             : 'quete-report.xlsx'
       });
       showNotice(isNonParticipantReport
         ? 'Non-participating members report downloaded successfully.'
-        : `${normalizedMonth ? 'Monthly Quete' : 'Quete'} report downloaded successfully.`);
+        : `${normalizedWeek ? 'Weekly Quete' : normalizedMonth ? 'Monthly Quete' : 'Quete'} report downloaded successfully.`);
     } catch (err) {
       setError(err.message);
     }

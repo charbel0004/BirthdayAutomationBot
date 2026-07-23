@@ -190,15 +190,17 @@ export async function downloadFile(path, { token, filename = 'download' } = {}) 
     throw error;
   }
 
-  const blob = await response.blob();
+  const contentType = response.headers.get('Content-Type') || 'application/octet-stream';
+  const dispositionFilename = response.headers.get('Content-Disposition')?.match(/filename="?([^"]+)"?/)?.[1];
+  const blob = new Blob([await response.blob()], { type: contentType });
   const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = objectUrl;
-  link.download = filename;
+  link.download = dispositionFilename || filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
-  window.URL.revokeObjectURL(objectUrl);
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
 }
 
 export async function generateCertificatePdf(formData, { token } = {}) {

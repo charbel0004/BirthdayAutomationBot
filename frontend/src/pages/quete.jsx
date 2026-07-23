@@ -68,6 +68,18 @@ function getMonthKey(value = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function getWeekKey(value = new Date()) {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNumber = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNumber);
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+  const weekNumber = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+  return `${utcDate.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+}
+
 function shiftMonth(monthKey, amount) {
   const [year, month] = String(monthKey || '').split('-').map(Number);
   const date = new Date(year, (month || 1) - 1 + amount, 1);
@@ -1032,6 +1044,7 @@ function QueteReportPanel({ data, onExportReport }) {
   const [selectedMonth, setSelectedMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   );
+  const [selectedWeek, setSelectedWeek] = useState(getWeekKey(now));
   const monthlyShifts = useMemo(() => {
     return (data.admin?.allShifts || data.shifts || [])
       .filter((shift) => String(shift.date || toLocalDateInputValue(shift.startAt)).startsWith(selectedMonth))
@@ -1063,6 +1076,13 @@ function QueteReportPanel({ data, onExportReport }) {
             </label>
             <button type="button" onClick={() => onExportReport(selectedMonth)} disabled={!selectedMonth}>
               Download Monthly Excel
+            </button>
+            <label>
+              <span>Report week</span>
+              <input type="week" value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} />
+            </label>
+            <button type="button" className="secondary" onClick={() => onExportReport(selectedWeek, 'weekly')} disabled={!selectedWeek}>
+              Download Weekly Excel
             </button>
           </div>
         </div>
