@@ -210,16 +210,13 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
           <table className="repository-table">
             <thead>
               <tr>
-                <th>First name</th>
-                <th>Last name</th>
+                <th>Donor</th>
                 <th>Age</th>
                 <th>Date of birth</th>
                 <th>Phone</th>
                 <th>Source</th>
                 <th>Latest location</th>
                 <th>Last donation</th>
-                <th>Last update</th>
-                <th>Updated by</th>
                 <th>Next eligible</th>
               </tr>
             </thead>
@@ -228,7 +225,7 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
                 <DonorRow key={donor.id} donor={donor} onSave={onSaveDonor} onDelete={onDeleteDonor} editable={isAdmin} />
               )) : (
                 <tr>
-                  <td colSpan="11">
+                  <td colSpan="8">
                     <div className="repository-empty-state">
                       <strong>No donor records found.</strong>
                       <span>Try broader filters or add an interested donor to start building the repository.</span>
@@ -403,7 +400,7 @@ export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDono
               <div className="call-center-empty call-center-welcome">
                 <span className="call-center-welcome-icon">☎</span>
                 <strong>Select the next donor</strong>
-                <span>Open a record to see the contact source, call the donor, record the outcome, and review previous attempts.</span>
+                <span>Open a record to see the contact source, add a call outcome, and review previous attempts.</span>
               </div>
             )}
           </div>

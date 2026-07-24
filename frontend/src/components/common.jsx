@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   api,
   formatBirthdayForDisplay,
@@ -461,6 +462,15 @@ export function BloodDonorInterestPage({ form, onChange, onSubmit, saving, check
             <label>
               Date of birth
               <input type="date" value={form.dateOfBirth} onChange={(event) => onChange('dateOfBirth', event.target.value)} required />
+            </label>
+            <label>
+              How did you hear about us?
+              <input
+                value={form.sourceOfContact || ''}
+                onChange={(event) => onChange('sourceOfContact', event.target.value)}
+                placeholder="Event, campaign, friend, social media..."
+                required
+              />
             </label>
             <label>
               Notes / comments
@@ -1033,7 +1043,7 @@ export function UserRow({ user, onSave }) {
   );
 }
 
-export function DonorRow({ donor, onSave, onDelete, editable }) {
+export function DonorRow({ donor, onSave, onDelete, onOpen, editable }) {
   const [draft, setDraft] = useState({
     firstName: donor.firstName,
     lastName: donor.lastName,
@@ -1085,23 +1095,35 @@ export function DonorRow({ donor, onSave, onDelete, editable }) {
   };
 
   return (
-    <tr className="repository-table-row">
-      <td>{editable ? <input value={draft.firstName} onChange={(event) => setDraft({ ...draft, firstName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.firstName}</span>}</td>
-      <td>{editable ? <input value={draft.lastName} onChange={(event) => setDraft({ ...draft, lastName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.lastName}</span>}</td>
+    <tr
+      className={`repository-table-row${onOpen ? ' repository-table-row-clickable' : ''}`}
+      onClick={onOpen ? (event) => {
+        if (event.target.closest('input, button, select, textarea, a')) return;
+        onOpen(donor);
+      } : undefined}
+    >
+      <td className="repository-donor-name-cell">
+        {editable ? (
+          <div className="repository-name-inputs">
+            <input aria-label="First name" value={draft.firstName} onChange={(event) => setDraft({ ...draft, firstName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} />
+            <input aria-label="Last name" value={draft.lastName} onChange={(event) => setDraft({ ...draft, lastName: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} />
+          </div>
+        ) : <span className="repository-cell-value"><strong>{donor.fullName}</strong></span>}
+        {error ? <span className="small-error">{error}</span> : null}
+      </td>
       <td><span className="repository-cell-value repository-cell-value-center">{donor.age}</span></td>
       <td>{editable ? <input type="date" value={draft.dateOfBirth} onChange={(event) => setDraft({ ...draft, dateOfBirth: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{formatCompactDate(donor.dateOfBirth)}</span>}</td>
       <td>{editable ? <input value={draft.phoneNumber} onChange={(event) => setDraft({ ...draft, phoneNumber: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.phoneNumber}</span>}</td>
       <td>{editable ? <input value={draft.sourceOfContact} onChange={(event) => setDraft({ ...draft, sourceOfContact: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.sourceOfContact || '—'}</span>}</td>
       <td>{editable ? <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.location}</span>}</td>
       <td><span className="repository-cell-value">{donor.lastDonationDate ? formatCompactDate(donor.lastDonationDate) : 'Not donated yet'}</span></td>
-      <td><span className="repository-cell-value">{saving ? 'Saving...' : formatCompactDate(donor.lastUpdatedDate)}</span></td>
-      <td>{error ? <span className="small-error repository-cell-value">{error}</span> : <span className="repository-cell-value">{donor.updatedByName}</span>}</td>
-      <td><span className="repository-cell-value">{hasChanges && !saving ? 'Unsaved changes' : formatCompactDate(donor.nextEligibleDonationDate)}</span></td>
+      <td><span className="repository-cell-value">{saving ? 'Saving...' : hasChanges ? 'Unsaved changes' : formatCompactDate(donor.nextEligibleDonationDate)}</span></td>
+      {onOpen ? <td><button type="button" className="secondary repository-view-button" onClick={() => onOpen(donor)}>View</button></td> : null}
     </tr>
   );
 }
 
-export function DonorRepositoryCard({ donor }) {
+export function DonorRepositoryCard({ donor, onOpen }) {
   const statusLabel = donor.lastDonationDate ? 'Previous donor' : 'Interested donor';
   const eligibleLabel = donor.nextEligibleDonationDate ? `Eligible ${formatCompactDate(donor.nextEligibleDonationDate)}` : 'No eligibility date';
   const rows = [
@@ -1117,7 +1139,18 @@ export function DonorRepositoryCard({ donor }) {
   ];
 
   return (
-    <article className="repository-card">
+    <article
+      className={`repository-card${onOpen ? ' repository-card-clickable' : ''}`}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? '0' : undefined}
+      onClick={onOpen ? () => onOpen(donor) : undefined}
+      onKeyDown={onOpen ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen(donor);
+        }
+      } : undefined}
+    >
       <div className="repository-card-head">
         <div>
           <h3>{donor.fullName || `${donor.firstName} ${donor.lastName}`.trim()}</h3>
@@ -1136,26 +1169,146 @@ export function DonorRepositoryCard({ donor }) {
           </div>
         ))}
       </div>
+      {onOpen ? <div className="repository-card-open-hint">View complete donor record →</div> : null}
     </article>
+  );
+}
+
+export function DonorRecordOverlay({ donor, onClose }) {
+  useEffect(() => {
+    if (!donor) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [donor, onClose]);
+
+  if (!donor) return null;
+
+  const callStatusLabels = {
+    upcoming: 'Upcoming donation',
+    'not-willing': 'Not willing',
+    'no-answer': 'No answer'
+  };
+  const detailRows = [
+    ['Date of birth', formatCompactDate(donor.dateOfBirth)],
+    ['Age', donor.age ?? '—'],
+    ['Phone number', donor.phoneNumber || '—'],
+    ['Source of contact', donor.sourceOfContact || 'Not recorded'],
+    ['Latest location', donor.location || 'Not recorded'],
+    ['Last donation', donor.lastDonationDate ? formatCompactDate(donor.lastDonationDate) : 'Not donated yet'],
+    ['Next eligible date', formatCompactDate(donor.nextEligibleDonationDate)],
+    ['Last updated', formatCompactDate(donor.lastUpdatedDate)],
+    ['Updated by', donor.updatedByName || '—']
+  ];
+
+  return (
+    <div className="modal-backdrop donor-record-backdrop" onClick={onClose}>
+      <article className="donor-record-overlay" role="dialog" aria-modal="true" aria-labelledby="donor-record-title" onClick={(event) => event.stopPropagation()}>
+        <header className="donor-record-overlay-header">
+          <div className="donor-record-identity">
+            <span className="call-center-avatar" aria-hidden="true">{donor.firstName?.[0]}{donor.lastName?.[0]}</span>
+            <div>
+              <span className="panel-kicker">Blood donor record</span>
+              <h2 id="donor-record-title">{donor.fullName}</h2>
+              <p>{donor.phoneNumber || 'No phone number'} · {donor.sourceOfContact || 'Source not recorded'}</p>
+            </div>
+          </div>
+          <button type="button" className="secondary donor-record-close" onClick={onClose} aria-label="Close donor record">Close</button>
+        </header>
+
+        <div className="donor-record-overlay-body">
+          <section className="donor-record-section">
+            <div className="donor-record-section-head">
+              <div><span className="panel-kicker">Profile</span><h3>Donor information</h3></div>
+              <span className={`call-status-pill status-${donor.callStatus || 'pending'}`}>{callStatusLabels[donor.callStatus] || 'Not contacted'}</span>
+            </div>
+            <div className="donor-record-detail-grid">
+              {detailRows.map(([label, value]) => (
+                <div key={label}><span>{label}</span><strong>{value}</strong></div>
+              ))}
+            </div>
+          </section>
+
+          <section className="donor-record-section">
+            <div className="donor-record-section-head">
+              <div><span className="panel-kicker">Contact history</span><h3>{donor.callHistory?.length || 0} call record{donor.callHistory?.length === 1 ? '' : 's'}</h3></div>
+            </div>
+            <div className="donor-record-history">
+              {donor.callHistory?.length ? donor.callHistory.map((entry, index) => (
+                <article key={`${entry.callDate}-${index}`} className="donor-record-history-item">
+                  <div>
+                    <span className={`call-status-pill status-${entry.callStatus || 'pending'}`}>{callStatusLabels[entry.callStatus] || entry.callStatus || 'No outcome'}</span>
+                    <strong>{entry.callDate ? formatCompactDate(entry.callDate) : 'Unknown date'}</strong>
+                  </div>
+                  <dl>
+                    <div><dt>Recorded by</dt><dd>{entry.recordedByName || 'Unknown user'}</dd></div>
+                    {entry.upcomingDonationDate ? <div><dt>Planned donation</dt><dd>{formatCompactDate(entry.upcomingDonationDate)}</dd></div> : null}
+                  </dl>
+                  <p>{entry.notes || 'No notes recorded for this call.'}</p>
+                </article>
+              )) : <div className="donor-record-empty">No calls have been recorded for this donor.</div>}
+            </div>
+          </section>
+
+          <section className="donor-record-section donor-record-notes-section">
+            <div><span className="panel-kicker">Notes</span><h3>Current donor notes</h3></div>
+            <p>{donor.notes || 'No donor notes recorded.'}</p>
+            {donor.locationHistory?.length ? (
+              <div className="donor-record-location-history"><span>Location history</span><strong>{donor.locationHistory.join(' · ')}</strong></div>
+            ) : null}
+          </section>
+        </div>
+      </article>
+    </div>
   );
 }
 
 export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, isOpen, onClose }) {
   const [draft, setDraft] = useState({
-    callStatus: donor.callStatus || '',
-    upcomingDonationDate: donor.upcomingDonationDate || '',
-    notes: donor.notes || ''
+    callStatus: '',
+    upcomingDonationDate: '',
+    notes: ''
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
 
   useEffect(() => {
     setDraft({
-      callStatus: donor.callStatus || '',
-      upcomingDonationDate: donor.upcomingDonationDate || '',
-      notes: donor.notes || ''
+      callStatus: '',
+      upcomingDonationDate: '',
+      notes: ''
     });
+    setError('');
+    setSuccess('');
+    setSelectedHistoryEntry(null);
   }, [donor.id]);
+
+  useEffect(() => {
+    if (!selectedHistoryEntry) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSelectedHistoryEntry(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedHistoryEntry]);
 
   if (!isOpen) return null;
 
@@ -1167,14 +1320,29 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
   const currentStatus = donor.callStatus || 'pending';
 
   const save = async () => {
+    if (!draft.callStatus) {
+      setSuccess('');
+      setError('Select a call outcome before saving this call record.');
+      return;
+    }
+
+    if (draft.callStatus === 'upcoming' && !draft.upcomingDonationDate) {
+      setSuccess('');
+      setError('Select the planned donation date before saving this call record.');
+      return;
+    }
+
     setSaving(true);
     setError('');
+    setSuccess('');
     try {
       await onSave(donor.id, {
         callStatus: draft.callStatus,
         upcomingDonationDate: draft.callStatus === 'upcoming' ? draft.upcomingDonationDate : '',
         notes: draft.notes
       });
+      setDraft({ callStatus: '', upcomingDonationDate: '', notes: '' });
+      setSuccess('Call record added successfully. The outcome is now in the donor history.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1211,10 +1379,25 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
         <div><span>Eligible since</span><strong>{formatCompactDate(donor.nextEligibleDonationDate)}</strong></div>
         <div><span>Last call</span><strong>{donor.lastCallDate ? formatCompactDate(donor.lastCallDate) : 'Never called'}</strong></div>
       </div>
+      <div className="call-center-latest-record">
+        <div className="call-center-section-heading">
+          <div><span className="panel-kicker">Latest call</span><h4>{statusLabels[donor.callStatus] || 'No call recorded yet'}</h4></div>
+          {donor.lastCallDate ? <small>{formatCompactDate(donor.lastCallDate)}</small> : null}
+        </div>
+        {donor.callStatus ? (
+          <div className="call-center-latest-details">
+            <span>Recorded by <strong>{donor.callHistory?.[0]?.recordedByName || donor.updatedByName || 'Unknown user'}</strong></span>
+            {donor.upcomingDonationDate ? <span>Planned donation <strong>{formatCompactDate(donor.upcomingDonationDate)}</strong></span> : null}
+            <p>{donor.callHistory?.[0]?.notes || 'No notes were added to the latest call.'}</p>
+          </div>
+        ) : (
+          <p className="helper-text">Add the first call record below.</p>
+        )}
+      </div>
       <div className="call-center-outcome-section">
         <div className="call-center-section-heading">
-          <div><span className="panel-kicker">Call outcome</span><h4>What happened on this call?</h4></div>
-          <small>Saving creates a dated history entry automatically.</small>
+          <div><span className="panel-kicker">New activity</span><h4>Add a call record</h4></div>
+          <small>Each save creates a separate dated history entry.</small>
         </div>
         <div className="call-outcome-options" role="group" aria-label="Call result">
           {[
@@ -1226,7 +1409,11 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
               key={value}
               type="button"
               className={`call-outcome-option${draft.callStatus === value ? ' is-selected' : ''}`}
-              onClick={() => setDraft({ ...draft, callStatus: value })}
+              onClick={() => {
+                setDraft({ ...draft, callStatus: value, upcomingDonationDate: value === 'upcoming' ? draft.upcomingDonationDate : '' });
+                setError('');
+                setSuccess('');
+              }}
               disabled={!editable}
             >
               <strong>{label}</strong>
@@ -1238,26 +1425,48 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
         {draft.callStatus === 'upcoming' ? (
           <label>
             <span>Planned donation date</span>
-            <input type="date" value={draft.upcomingDonationDate} onChange={(event) => setDraft({ ...draft, upcomingDonationDate: event.target.value })} disabled={!editable} required />
+            <input
+              type="date"
+              value={draft.upcomingDonationDate}
+              onChange={(event) => {
+                setDraft({ ...draft, upcomingDonationDate: event.target.value });
+                setError('');
+                setSuccess('');
+              }}
+              disabled={!editable}
+              required
+            />
           </label>
         ) : null}
         <label>
           <span>Call notes</span>
-          <textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Call notes and comments" disabled={!editable} />
+          <textarea
+            value={draft.notes}
+            onChange={(event) => {
+              setDraft({ ...draft, notes: event.target.value });
+              setError('');
+              setSuccess('');
+            }}
+            placeholder="Add notes for this call only"
+            disabled={!editable}
+          />
         </label>
         </div>
       </div>
       <div className="actions call-center-form-actions">
         {editable ? (
           <>
-            <button type="button" onClick={save} disabled={saving || !draft.callStatus}>{saving ? 'Saving call...' : 'Save call outcome'}</button>
+            <button type="button" onClick={save} disabled={saving}>{saving ? 'Saving call...' : 'Add call record'}</button>
             <button type="button" className="secondary" onClick={() => onMarkDonated?.(donor)}>Record a donation</button>
           </>
         ) : (
           <span className="helper-text">Read only</span>
         )}
       </div>
-      {error ? <span className="small-error">{error}</span> : null}
+      <div className="call-center-feedback" aria-live="polite">
+        {error ? <div className="error-banner" role="alert">{error}</div> : null}
+        {success ? <div className="notice-banner" role="status">{success}</div> : null}
+      </div>
       <div className="call-center-history">
         <div className="call-center-section-heading">
           <div><span className="panel-kicker">Activity log</span><h4>Recent call history</h4></div>
@@ -1265,7 +1474,19 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
         </div>
         {donor.callHistory?.length ? (
           donor.callHistory.slice(0, 5).map((entry, index) => (
-            <div key={`${entry.callDate}-${index}`} className="call-history-item">
+            <div
+              key={`${entry.callDate}-${index}`}
+              className="call-history-item call-history-item-button"
+              role="button"
+              tabIndex="0"
+              onClick={() => setSelectedHistoryEntry(entry)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setSelectedHistoryEntry(entry);
+                }
+              }}
+            >
               <span className="call-history-timeline-dot" />
               <div className="call-history-main">
                 <strong>{statusLabels[entry.callStatus] || entry.callStatus || 'No status'}</strong>
@@ -1273,12 +1494,44 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
                 {entry.upcomingDonationDate ? <span>Planned donation: {formatCompactDate(entry.upcomingDonationDate)}</span> : null}
               <p>{entry.notes || 'No notes'}</p>
               </div>
+              <span className="call-history-open-label">View record →</span>
             </div>
           ))
         ) : (
           <p className="helper-text">No call records yet.</p>
         )}
       </div>
+      {selectedHistoryEntry && typeof document !== 'undefined' ? createPortal((
+        <div className="modal-backdrop call-history-overlay-backdrop" onClick={() => setSelectedHistoryEntry(null)}>
+          <article className="call-history-overlay" role="dialog" aria-modal="true" aria-labelledby="call-history-overlay-title" onClick={(event) => event.stopPropagation()}>
+            <header className="call-history-overlay-head">
+              <div>
+                <span className="panel-kicker">Previous call record</span>
+                <h3 id="call-history-overlay-title">{donor.fullName}</h3>
+              </div>
+              <button type="button" className="secondary" onClick={() => setSelectedHistoryEntry(null)}>Close</button>
+            </header>
+            <div className="call-history-overlay-status">
+              <span className={`call-status-pill status-${selectedHistoryEntry.callStatus || 'pending'}`}>
+                {statusLabels[selectedHistoryEntry.callStatus] || selectedHistoryEntry.callStatus || 'No outcome'}
+              </span>
+              <strong>{selectedHistoryEntry.callDate ? formatCompactDate(selectedHistoryEntry.callDate) : 'Unknown date'}</strong>
+            </div>
+            <dl className="call-history-overlay-details">
+              <div><dt>Recorded by</dt><dd>{selectedHistoryEntry.recordedByName || 'Unknown user'}</dd></div>
+              <div><dt>Donor phone</dt><dd>{donor.phoneNumber || 'Not recorded'}</dd></div>
+              <div><dt>Source of contact</dt><dd>{donor.sourceOfContact || 'Not recorded'}</dd></div>
+              {selectedHistoryEntry.upcomingDonationDate ? (
+                <div><dt>Planned donation</dt><dd>{formatCompactDate(selectedHistoryEntry.upcomingDonationDate)}</dd></div>
+              ) : null}
+            </dl>
+            <section className="call-history-overlay-notes">
+              <span>Call notes</span>
+              <p>{selectedHistoryEntry.notes || 'No notes were recorded for this call.'}</p>
+            </section>
+          </article>
+        </div>
+      ), document.body) : null}
     </article>
   );
 }
