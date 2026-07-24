@@ -137,6 +137,7 @@ async function ensureIndexes() {
     bloodDonorsCollection().createIndex({ userId: 1 }),
     bloodDonorsCollection().createIndex({ normalizedFullName: 1 }),
     bloodDonorsCollection().createIndex({ normalizedPhoneNumber: 1 }),
+    bloodDonorsCollection().createIndex({ sourceOfContact: 1 }),
     bloodDonorsCollection().createIndex({ location: 1 }),
     bloodDonorsCollection().createIndex({ nextEligibleDonationDate: 1 }),
     donationLocationsCollection().createIndex({ normalizedName: 1 }, { unique: true }),

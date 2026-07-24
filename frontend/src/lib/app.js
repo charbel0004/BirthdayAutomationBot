@@ -54,6 +54,7 @@ export const emptyBloodDriveForm = {
   lastName: '',
   dateOfBirth: '',
   phoneNumber: '',
+  sourceOfContact: '',
   location: '',
   notes: ''
 };
@@ -75,6 +76,7 @@ export const emptyBloodDonorInterestForm = {
   lastName: '',
   phoneNumber: '',
   dateOfBirth: '',
+  sourceOfContact: '',
   notes: ''
 };
 

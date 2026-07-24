@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
   calculatePresentationTotalScore,
@@ -74,7 +74,7 @@ const breadcrumbConfig = {
 
 export default function App() {
   const bloodDriveRefreshMs = 20000;
-  const emptyRepositoryDonor = { firstName: '', lastName: '', dateOfBirth: '', phoneNumber: '', notes: '' };
+  const emptyRepositoryDonor = { firstName: '', lastName: '', dateOfBirth: '', phoneNumber: '', sourceOfContact: '', notes: '' };
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || '');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -104,7 +104,7 @@ export default function App() {
   const [collectionLookupQuery, setCollectionLookupQuery] = useState('');
   const [collectionLookupResults, setCollectionLookupResults] = useState([]);
   const [selectedCollectionDonor, setSelectedCollectionDonor] = useState(null);
-  const [donorFilters, setDonorFilters] = useState({ name: '', location: '' });
+  const [donorFilters, setDonorFilters] = useState({ name: '', location: '', source: '', callStatus: '' });
   const [eligibleDonors, setEligibleDonors] = useState([]);
   const [allDonors, setAllDonors] = useState([]);
   const [repositoryFilters, setRepositoryFilters] = useState({ name: '', location: '' });
@@ -157,6 +157,8 @@ export default function App() {
     const params = new URLSearchParams();
     if (filters.name.trim()) params.set('name', filters.name.trim());
     if (filters.location.trim()) params.set('location', filters.location.trim());
+    if ((filters.source || '').trim()) params.set('source', filters.source.trim());
+    if ((filters.callStatus || '').trim()) params.set('callStatus', filters.callStatus.trim());
     if ((options.phone || '').trim()) params.set('phone', options.phone.trim());
     if (!eligibleOnly) params.set('eligibleOnly', 'false');
     if (options.limit) params.set('limit', String(options.limit));
@@ -714,6 +716,7 @@ export default function App() {
         const duplicateDonor = err.payload.duplicateDonor;
         selectCollectionDonor(duplicateDonor, {
           location: currentFormSnapshot.location,
+          sourceOfContact: currentFormSnapshot.sourceOfContact,
           notes: currentFormSnapshot.notes
         });
         await api('/api/blood-drive/donors', {
@@ -824,8 +827,12 @@ export default function App() {
     showNotice('Blood donor record deleted successfully.');
   };
 
-  const searchEligibleDonors = async () => setEligibleDonors(await api(buildDonorQuery(donorFilters, true), { token }));
-  const searchRepositoryDonors = async () => setAllDonors(await api(buildDonorQuery(repositoryFilters, false), { token }));
+  const searchEligibleDonors = useCallback(async () => {
+    setEligibleDonors(await api(buildDonorQuery(donorFilters, true), { token }));
+  }, [donorFilters, token]);
+  const searchRepositoryDonors = useCallback(async () => {
+    setAllDonors(await api(buildDonorQuery(repositoryFilters, false), { token }));
+  }, [repositoryFilters, token]);
   const searchRecruitmentLeads = async () => refreshRecruitmentLeads();
 
   const saveRecruitmentLeadContact = async (id, payload) => {
@@ -993,6 +1000,7 @@ export default function App() {
       lastName: donor.lastName,
       dateOfBirth: donor.dateOfBirth,
       phoneNumber: donor.phoneNumber,
+      sourceOfContact: overrides.sourceOfContact ?? donor.sourceOfContact ?? '',
       location: overrides.location ?? donor.location ?? '',
       notes: overrides.notes ?? donor.notes ?? ''
     });

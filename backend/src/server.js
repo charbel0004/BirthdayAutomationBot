@@ -511,6 +511,7 @@ function sanitizeBloodDonor(entry) {
     dateOfBirth: entry.dateOfBirth,
     phoneNumber: entry.phoneNumber,
     normalizedPhoneNumber: entry.normalizedPhoneNumber || normalizePhoneNumber(entry.phoneNumber),
+    sourceOfContact: entry.sourceOfContact || '',
     location: entry.location || '',
     locationHistory: buildLocationHistory(entry.locationHistory, entry.location || ''),
     contacted: entry.contacted === true,
@@ -784,13 +785,14 @@ async function findExistingBloodDonor({ firstName, lastName, dateOfBirth, phoneN
   return bloodDonorsCollection().findOne(query);
 }
 
-async function createBloodDonorProspect({ firstName, lastName, dateOfBirth, phoneNumber, notes, updatedByUserId = null, updatedByName = '' }) {
+async function createBloodDonorProspect({ firstName, lastName, dateOfBirth, phoneNumber, sourceOfContact, notes, updatedByUserId = null, updatedByName = '' }) {
   const trimmedFirstName = String(firstName || '').trim();
   const trimmedLastName = String(lastName || '').trim();
   const trimmedPhoneNumber = String(phoneNumber || '').trim();
+  const trimmedSourceOfContact = String(sourceOfContact || '').trim();
 
-  if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth) {
-    const error = new Error('Please complete first name, last name, phone number, and date of birth.');
+  if (!trimmedFirstName || !trimmedLastName || !trimmedPhoneNumber || !dateOfBirth || !trimmedSourceOfContact) {
+    const error = new Error('Please complete first name, last name, phone number, date of birth, and source of contact.');
     error.status = 400;
     throw error;
   }
@@ -826,6 +828,7 @@ async function createBloodDonorProspect({ firstName, lastName, dateOfBirth, phon
     dateOfBirth: formatDateOnly(dateOfBirth),
     phoneNumber: trimmedPhoneNumber,
     normalizedPhoneNumber: normalizePhoneNumber(trimmedPhoneNumber),
+    sourceOfContact: trimmedSourceOfContact,
     location: '',
     locationHistory: [],
     contacted: false,
@@ -1555,6 +1558,7 @@ app.post('/api/blood-drive/donors/public-interest', async (req, res) => {
   try {
     const donor = await createBloodDonorProspect({
       ...req.body,
+      sourceOfContact: String(req.body?.sourceOfContact || '').trim() || 'Public donor registration form',
       updatedByName: 'Public donor interest form'
     });
     return res.status(201).json(donor);
@@ -2029,6 +2033,8 @@ app.get('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => 
   const today = formatDateOnly(now());
   const nameFilter = String(req.query.name || '').trim();
   const locationFilter = String(req.query.location || '').trim();
+  const sourceFilter = String(req.query.source || '').trim();
+  const callStatusFilter = String(req.query.callStatus || '').trim();
   const phoneFilter = normalizePhoneNumber(req.query.phone || '');
   const eligibleOnly = String(req.query.eligibleOnly || 'true') !== 'false';
   const limit = Math.min(Math.max(Number(req.query.limit || 0), 0), 50);
@@ -2049,6 +2055,16 @@ app.get('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => 
       { location: { $regex: `^${escapeRegex(locationFilter)}$`, $options: 'i' } },
       { locationHistory: { $regex: `^${escapeRegex(locationFilter)}$`, $options: 'i' } }
     ];
+  }
+
+  if (sourceFilter) {
+    query.sourceOfContact = { $regex: escapeRegex(sourceFilter), $options: 'i' };
+  }
+
+  if (callStatusFilter === 'pending') {
+    query.callStatus = { $in: ['', null] };
+  } else if (callStatusFilter) {
+    query.callStatus = callStatusFilter;
   }
 
   if (phoneFilter) {
@@ -2217,6 +2233,7 @@ app.get('/api/blood-drive/donors/export', requireRole('admin'), requireBloodDriv
     age: calculateAgeFromDateOfBirth(donor.dateOfBirth) ?? '',
     dateOfBirth: donor.dateOfBirth || '',
     phoneNumber: donor.phoneNumber || '',
+    sourceOfContact: donor.sourceOfContact || '',
     location: donor.location || '',
     donationDate: donor.lastDonationDate || '',
     updatedByName: donor.updatedByName || '',
@@ -2230,6 +2247,7 @@ app.get('/api/blood-drive/donors/export', requireRole('admin'), requireBloodDriv
       'age',
       'dateOfBirth',
       'phoneNumber',
+      'sourceOfContact',
       'location',
       'donationDate',
       'updatedByName',
@@ -2244,6 +2262,7 @@ app.get('/api/blood-drive/donors/export', requireRole('admin'), requireBloodDriv
     'Age',
     'Date of Birth',
     'Phone Number',
+    'Source of Contact',
     'Location',
     'Donation Date',
     'Updated By',
@@ -2354,12 +2373,12 @@ app.post('/api/blood-drive/donors/prospects', requireBloodDriveAccess, async (re
 });
 
 app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => {
-  const { donorId, firstName, lastName, dateOfBirth, phoneNumber, location, notes } = req.body || {};
+  const { donorId, firstName, lastName, dateOfBirth, phoneNumber, sourceOfContact, location, notes } = req.body || {};
 
-  if (!firstName || !lastName || !phoneNumber || !location || !dateOfBirth) {
+  if (!firstName || !lastName || !phoneNumber || !location || !dateOfBirth || !String(sourceOfContact || '').trim()) {
     return res
       .status(400)
-      .json({ error: 'Please complete first name, last name, date of birth, phone number, and location.' });
+      .json({ error: 'Please complete first name, last name, date of birth, phone number, source of contact, and location.' });
   }
 
   const numericAge = calculateAgeFromDateOfBirth(dateOfBirth);
@@ -2378,6 +2397,7 @@ app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) =>
     dateOfBirth: formatDateOnly(dateOfBirth),
     phoneNumber: String(phoneNumber).trim(),
     normalizedPhoneNumber: normalizePhoneNumber(phoneNumber),
+    sourceOfContact: String(sourceOfContact).trim(),
     location: String(location).trim(),
     locationHistory: [],
     contacted: false,
@@ -2423,6 +2443,7 @@ app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) =>
       lastCallDate: donor.lastCallDate || '',
       upcomingDonationDate: '',
       callHistory: Array.isArray(donor.callHistory) ? donor.callHistory : [],
+      sourceOfContact: String(sourceOfContact).trim() || donor.sourceOfContact || '',
       notes: typeof notes === 'string' ? notes.trim() : (donor.notes || '')
     };
 
@@ -2526,7 +2547,7 @@ app.put('/api/blood-drive/donors/:id', requireRole('admin'), requireBloodDriveAc
     return res.status(404).json({ error: 'The selected blood donor record could not be found.' });
   }
 
-  const { firstName, lastName, dateOfBirth, phoneNumber, location, contacted, willingToDonate, notes } = req.body || {};
+  const { firstName, lastName, dateOfBirth, phoneNumber, sourceOfContact, location, contacted, willingToDonate, notes } = req.body || {};
   const updates = {};
 
   if (typeof firstName === 'string' && firstName.trim()) {
@@ -2547,6 +2568,13 @@ app.put('/api/blood-drive/donors/:id', requireRole('admin'), requireBloodDriveAc
 
   if (typeof phoneNumber === 'string' && phoneNumber.trim()) {
     updates.phoneNumber = phoneNumber.trim();
+  }
+
+  if (typeof sourceOfContact === 'string') {
+    if (!sourceOfContact.trim()) {
+      return res.status(400).json({ error: 'Source of contact cannot be empty.' });
+    }
+    updates.sourceOfContact = sourceOfContact.trim();
   }
 
   if (typeof location === 'string' && location.trim()) {

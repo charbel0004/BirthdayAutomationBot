@@ -711,6 +711,10 @@ export function BloodDriveOverlay({
             <input value={form.phoneNumber} onChange={(event) => onChange('phoneNumber', event.target.value)} required />
           </label>
           <label>
+            Source of contact
+            <input value={form.sourceOfContact || ''} onChange={(event) => onChange('sourceOfContact', event.target.value)} placeholder="e.g. Jbeil Souks Collection" required />
+          </label>
+          <label>
             Donation day location
             <select value={form.location} onChange={(event) => onChange('location', event.target.value)} required>
               <option value="">Select an active location</option>
@@ -769,6 +773,10 @@ export function DonorProspectOverlay({ isOpen, draft, setDraft, onClose, onSubmi
           <label>
             Phone number
             <input value={draft.phoneNumber} onChange={(event) => setDraft((current) => ({ ...current, phoneNumber: event.target.value }))} required />
+          </label>
+          <label>
+            Source of contact
+            <input value={draft.sourceOfContact || ''} onChange={(event) => setDraft((current) => ({ ...current, sourceOfContact: event.target.value }))} placeholder="e.g. WhatsApp, event, referral" required />
           </label>
           <label>
             Initial notes
@@ -1031,6 +1039,7 @@ export function DonorRow({ donor, onSave, onDelete, editable }) {
     lastName: donor.lastName,
     dateOfBirth: donor.dateOfBirth,
     phoneNumber: donor.phoneNumber,
+    sourceOfContact: donor.sourceOfContact || '',
     location: donor.location
   });
   const [saving, setSaving] = useState(false);
@@ -1042,6 +1051,7 @@ export function DonorRow({ donor, onSave, onDelete, editable }) {
       lastName: donor.lastName,
       dateOfBirth: donor.dateOfBirth,
       phoneNumber: donor.phoneNumber,
+      sourceOfContact: donor.sourceOfContact || '',
       location: donor.location
     });
   }, [donor]);
@@ -1051,6 +1061,7 @@ export function DonorRow({ donor, onSave, onDelete, editable }) {
     draft.lastName !== donor.lastName ||
     draft.dateOfBirth !== donor.dateOfBirth ||
     draft.phoneNumber !== donor.phoneNumber ||
+    draft.sourceOfContact !== (donor.sourceOfContact || '') ||
     draft.location !== donor.location;
 
   const save = async () => {
@@ -1080,6 +1091,7 @@ export function DonorRow({ donor, onSave, onDelete, editable }) {
       <td><span className="repository-cell-value repository-cell-value-center">{donor.age}</span></td>
       <td>{editable ? <input type="date" value={draft.dateOfBirth} onChange={(event) => setDraft({ ...draft, dateOfBirth: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{formatCompactDate(donor.dateOfBirth)}</span>}</td>
       <td>{editable ? <input value={draft.phoneNumber} onChange={(event) => setDraft({ ...draft, phoneNumber: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.phoneNumber}</span>}</td>
+      <td>{editable ? <input value={draft.sourceOfContact} onChange={(event) => setDraft({ ...draft, sourceOfContact: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.sourceOfContact || '—'}</span>}</td>
       <td>{editable ? <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.location}</span>}</td>
       <td><span className="repository-cell-value">{donor.lastDonationDate ? formatCompactDate(donor.lastDonationDate) : 'Not donated yet'}</span></td>
       <td><span className="repository-cell-value">{saving ? 'Saving...' : formatCompactDate(donor.lastUpdatedDate)}</span></td>
@@ -1096,6 +1108,7 @@ export function DonorRepositoryCard({ donor }) {
     ['Age', donor.age ?? '—'],
     ['Date of birth', formatCompactDate(donor.dateOfBirth)],
     ['Phone', donor.phoneNumber || '—'],
+    ['Source', donor.sourceOfContact || '—'],
     ['Latest location', donor.location || '—'],
     ['Last donation', donor.lastDonationDate ? formatCompactDate(donor.lastDonationDate) : 'Not donated yet'],
     ['Last update', formatCompactDate(donor.lastUpdatedDate)],
@@ -1146,6 +1159,13 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
 
   if (!isOpen) return null;
 
+  const statusLabels = {
+    upcoming: 'Upcoming donation',
+    'not-willing': 'Not willing',
+    'no-answer': 'No answer'
+  };
+  const currentStatus = donor.callStatus || 'pending';
+
   const save = async () => {
     setSaving(true);
     setError('');
@@ -1165,46 +1185,73 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
   return (
     <article className="call-center-record-card">
       <div className="call-center-record-topbar">
-        <h3>Call Center Record</h3>
+        <div>
+          <span className="panel-kicker">Active donor record</span>
+          <h3>Call workspace</h3>
+        </div>
         <button type="button" className="secondary" onClick={onClose}>Close</button>
       </div>
       <div className="call-center-record-head">
-        <div>
+        <div className="call-center-contact-identity">
+          <span className="call-center-avatar" aria-hidden="true">{donor.firstName?.[0]}{donor.lastName?.[0]}</span>
+          <div>
           <h3>{donor.fullName}</h3>
-          <p>{donor.phoneNumber || 'No phone number'}{donor.location ? ` · ${donor.location}` : ''}</p>
+            <p>{donor.age ? `${donor.age} years old` : 'Age unavailable'}{donor.location ? ` · ${donor.location}` : ''}</p>
+          </div>
         </div>
-        <div className="call-center-meta">
-          <span>Eligible: {donor.nextEligibleDonationDate}</span>
-          <span>Last call: {donor.lastCallDate || 'No call record yet'}</span>
-        </div>
+        <span className={`call-status-pill status-${currentStatus}`}>{statusLabels[donor.callStatus] || 'Not contacted'}</span>
       </div>
-      <div className="grid-form">
-        <label>
-          Call result
-          <select value={draft.callStatus} onChange={(event) => setDraft({ ...draft, callStatus: event.target.value })} disabled={!editable}>
-            <option value="">Select result</option>
-            <option value="upcoming">Willing, may come on a date</option>
-            <option value="not-willing">Not willing</option>
-            <option value="no-answer">No answer</option>
-          </select>
-        </label>
+      <div className="call-center-contact-strip">
+        <a className="call-center-phone-action" href={donor.phoneNumber ? `tel:${donor.phoneNumber}` : undefined} aria-disabled={!donor.phoneNumber}>
+          <span>Phone number</span>
+          <strong>{donor.phoneNumber || 'Not recorded'}</strong>
+          <small>Tap to call</small>
+        </a>
+        <div><span>Source of contact</span><strong>{donor.sourceOfContact || 'Not recorded'}</strong></div>
+        <div><span>Eligible since</span><strong>{formatCompactDate(donor.nextEligibleDonationDate)}</strong></div>
+        <div><span>Last call</span><strong>{donor.lastCallDate ? formatCompactDate(donor.lastCallDate) : 'Never called'}</strong></div>
+      </div>
+      <div className="call-center-outcome-section">
+        <div className="call-center-section-heading">
+          <div><span className="panel-kicker">Call outcome</span><h4>What happened on this call?</h4></div>
+          <small>Saving creates a dated history entry automatically.</small>
+        </div>
+        <div className="call-outcome-options" role="group" aria-label="Call result">
+          {[
+            ['no-answer', 'No answer', 'Could not reach donor'],
+            ['upcoming', 'Interested', 'Plans to donate'],
+            ['not-willing', 'Not willing', 'Declined for now']
+          ].map(([value, label, description]) => (
+            <button
+              key={value}
+              type="button"
+              className={`call-outcome-option${draft.callStatus === value ? ' is-selected' : ''}`}
+              onClick={() => setDraft({ ...draft, callStatus: value })}
+              disabled={!editable}
+            >
+              <strong>{label}</strong>
+              <span>{description}</span>
+            </button>
+          ))}
+        </div>
+        <div className="call-center-form-grid">
         {draft.callStatus === 'upcoming' ? (
           <label>
-            Upcoming date
+            <span>Planned donation date</span>
             <input type="date" value={draft.upcomingDonationDate} onChange={(event) => setDraft({ ...draft, upcomingDonationDate: event.target.value })} disabled={!editable} required />
           </label>
         ) : null}
         <label>
-          Notes
+          <span>Call notes</span>
           <textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Call notes and comments" disabled={!editable} />
         </label>
-        <div className="helper-text">The call date is recorded automatically when you save this record.</div>
+        </div>
       </div>
-      <div className="actions">
+      <div className="actions call-center-form-actions">
         {editable ? (
           <>
-            <button type="button" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
-            <button type="button" className="secondary" onClick={() => onMarkDonated?.(donor)}>Mark Donated</button>
+            <button type="button" onClick={save} disabled={saving || !draft.callStatus}>{saving ? 'Saving call...' : 'Save call outcome'}</button>
+            <button type="button" className="secondary" onClick={() => onMarkDonated?.(donor)}>Record a donation</button>
           </>
         ) : (
           <span className="helper-text">Read only</span>
@@ -1212,14 +1259,20 @@ export function CallCenterRecordPanel({ donor, onSave, onMarkDonated, editable, 
       </div>
       {error ? <span className="small-error">{error}</span> : null}
       <div className="call-center-history">
-        <h4>Call history</h4>
+        <div className="call-center-section-heading">
+          <div><span className="panel-kicker">Activity log</span><h4>Recent call history</h4></div>
+          <small>{donor.callHistory?.length || 0} total attempt{donor.callHistory?.length === 1 ? '' : 's'}</small>
+        </div>
         {donor.callHistory?.length ? (
           donor.callHistory.slice(0, 5).map((entry, index) => (
             <div key={`${entry.callDate}-${index}`} className="call-history-item">
-              <strong>{entry.callDate || 'Unknown date'}</strong>
-              <span>{entry.callStatus || 'No status'}{entry.upcomingDonationDate ? ` · Upcoming: ${entry.upcomingDonationDate}` : ''}</span>
-              <span>{entry.recordedByName || 'Unknown user'}</span>
+              <span className="call-history-timeline-dot" />
+              <div className="call-history-main">
+                <strong>{statusLabels[entry.callStatus] || entry.callStatus || 'No status'}</strong>
+                <span>{entry.callDate ? formatCompactDate(entry.callDate) : 'Unknown date'} · {entry.recordedByName || 'Unknown user'}</span>
+                {entry.upcomingDonationDate ? <span>Planned donation: {formatCompactDate(entry.upcomingDonationDate)}</span> : null}
               <p>{entry.notes || 'No notes'}</p>
+              </div>
             </div>
           ))
         ) : (

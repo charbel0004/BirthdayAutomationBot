@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BloodDriveIcon, CallCenterRecordPanel, DonorProspectOverlay, DonorRepositoryCard, DonorRow, MetricBarChart, ModuleCard } from '../components/common';
 
 export function BloodDrivePage({ donorStats, publicFormUrl, onOpenCollection, onOpenEligibleDonors, onOpenRepository, onOpenLocations, onExportDonations, onBack, isAdmin }) {
@@ -215,6 +215,7 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
                 <th>Age</th>
                 <th>Date of birth</th>
                 <th>Phone</th>
+                <th>Source</th>
                 <th>Latest location</th>
                 <th>Last donation</th>
                 <th>Last update</th>
@@ -227,7 +228,7 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
                 <DonorRow key={donor.id} donor={donor} onSave={onSaveDonor} onDelete={onDeleteDonor} editable={isAdmin} />
               )) : (
                 <tr>
-                  <td colSpan="10">
+                  <td colSpan="11">
                     <div className="repository-empty-state">
                       <strong>No donor records found.</strong>
                       <span>Try broader filters or add an interested donor to start building the repository.</span>
@@ -261,6 +262,15 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
 export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDonors, onSearch, onSaveDonor, onMarkDonated, onBack, isAdmin }) {
   const [selectedDonorId, setSelectedDonorId] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const queueStats = useMemo(() => ({
+    total: eligibleDonors.length,
+    pending: eligibleDonors.filter((donor) => !donor.callStatus).length,
+    noAnswer: eligibleDonors.filter((donor) => donor.callStatus === 'no-answer').length,
+    upcoming: eligibleDonors.filter((donor) => donor.callStatus === 'upcoming').length,
+    contactedToday: eligibleDonors.filter((donor) => donor.lastCallDate === today).length
+  }), [eligibleDonors, today]);
 
   useEffect(() => {
     if (!eligibleDonors.some((donor) => donor.id === selectedDonorId)) {
@@ -275,38 +285,76 @@ export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDono
     }, 250);
 
     return () => window.clearTimeout(timeoutId);
-  }, [donorFilters.name, donorFilters.location, onSearch]);
+  }, [donorFilters.name, donorFilters.location, donorFilters.source, donorFilters.callStatus, onSearch]);
 
   const selectedDonor = eligibleDonors.find((donor) => donor.id === selectedDonorId) || null;
 
   return (
-    <div className="page-shell">
-      <div className="page-header">
+    <div className="page-shell call-center-page">
+      <div className="page-header call-center-page-header">
         <div>
-          <div className="panel-kicker">Blood Drive</div>
-          <h2>Eligible Donor Call Center</h2>
-          <p>Work through eligible donors, capture contact status, and record willingness to donate.</p>
+          <div className="panel-kicker">Blood Drive · Outreach Desk</div>
+          <h2>Donor Call Center</h2>
+          <p>Prioritize eligible donors, place calls, and record every outcome from one focused workspace.</p>
         </div>
+        <div className="call-center-live-indicator"><span /> Live queue · {today}</div>
       </div>
-      <section className="panel">
-        <div className="section-head">
+      <section className="call-center-stat-grid" aria-label="Queue summary">
+        <article><span>Eligible queue</span><strong>{queueStats.total}</strong><small>Ready for outreach</small></article>
+        <article><span>Not contacted</span><strong>{queueStats.pending}</strong><small>First-call priority</small></article>
+        <article><span>No answer</span><strong>{queueStats.noAnswer}</strong><small>Needs another attempt</small></article>
+        <article><span>Upcoming</span><strong>{queueStats.upcoming}</strong><small>Interested donors</small></article>
+        <article><span>Called today</span><strong>{queueStats.contactedToday}</strong><small>Team activity</small></article>
+      </section>
+      <section className="panel call-center-workspace">
+        <div className="call-center-toolbar">
           <div>
-            <h2>Call Center Queue</h2>
-            <p>Only eligible donors appear here, including repository-added donors who have not donated yet.</p>
+            <div className="panel-kicker">Outreach queue</div>
+            <h2>{eligibleDonors.length} donor{eligibleDonors.length === 1 ? '' : 's'} ready to contact</h2>
           </div>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setDonorFilters({ name: '', location: '', source: '', callStatus: '' })}
+          >
+            Clear filters
+          </button>
         </div>
-        <div className="call-center-guide">
-          <span><strong>{eligibleDonors.length}</strong> eligible donors in queue</span>
-          <span>Click a donor to open the side panel, update the current call, and review recent call history.</span>
-        </div>
-        <form className="filter-form" onSubmit={(event) => event.preventDefault()}>
-          <input placeholder="Filter by name" value={donorFilters.name} onChange={(event) => setDonorFilters((current) => ({ ...current, name: event.target.value }))} />
-          <input placeholder="Filter by location" value={donorFilters.location} onChange={(event) => setDonorFilters((current) => ({ ...current, location: event.target.value }))} />
+        <form className="call-center-filter-bar" onSubmit={(event) => event.preventDefault()}>
+          <label className="call-center-search-field">
+            <span>Search donor</span>
+            <input placeholder="Name" value={donorFilters.name} onChange={(event) => setDonorFilters((current) => ({ ...current, name: event.target.value }))} />
+          </label>
+          <label>
+            <span>Call status</span>
+            <select value={donorFilters.callStatus || ''} onChange={(event) => setDonorFilters((current) => ({ ...current, callStatus: event.target.value }))}>
+              <option value="">All statuses</option>
+              <option value="pending">Not contacted</option>
+              <option value="no-answer">No answer</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="not-willing">Not willing</option>
+            </select>
+          </label>
+          <label>
+            <span>Source</span>
+            <input placeholder="Event, referral..." value={donorFilters.source || ''} onChange={(event) => setDonorFilters((current) => ({ ...current, source: event.target.value }))} />
+          </label>
+          <label>
+            <span>Location</span>
+            <input placeholder="Any location" value={donorFilters.location} onChange={(event) => setDonorFilters((current) => ({ ...current, location: event.target.value }))} />
+          </label>
         </form>
         <div className="call-center-layout">
           <div className="call-center-list">
             {eligibleDonors.length ? (
-              eligibleDonors.map((donor) => (
+              eligibleDonors.map((donor, index) => {
+                const statusLabels = {
+                  upcoming: 'Upcoming',
+                  'not-willing': 'Not willing',
+                  'no-answer': 'No answer'
+                };
+                const status = donor.callStatus || 'pending';
+                return (
                 <div key={donor.id} className="call-center-list-item">
                   <button
                     type="button"
@@ -316,8 +364,12 @@ export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDono
                       setPanelOpen(true);
                     }}
                   >
-                    <strong>{donor.fullName}</strong>
-                    <span>{donor.phoneNumber || 'No phone number'}</span>
+                    <span className="call-center-queue-number">{String(index + 1).padStart(2, '0')}</span>
+                    <span className="call-center-donor-summary">
+                      <strong>{donor.fullName}</strong>
+                      <span>{donor.phoneNumber || 'No phone number'} · {donor.sourceOfContact || 'Source not recorded'}</span>
+                    </span>
+                    <span className={`call-status-pill status-${status}`}>{statusLabels[donor.callStatus] || 'Not contacted'}</span>
                   </button>
                   {donor.id === selectedDonorId && panelOpen ? (
                     <div className="call-center-inline-detail">
@@ -332,9 +384,9 @@ export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDono
                     </div>
                   ) : null}
                 </div>
-              ))
+              );})
             ) : (
-              <div className="helper-text">No eligible donors found.</div>
+              <div className="call-center-empty call-center-queue-empty"><strong>No donors match these filters.</strong><span>Clear or broaden the filters to return to the outreach queue.</span></div>
             )}
           </div>
           <div className="call-center-detail">
@@ -348,7 +400,11 @@ export function EligibleDonorsPage({ donorFilters, setDonorFilters, eligibleDono
                 onClose={() => setPanelOpen(false)}
               />
             ) : (
-              <div className="call-center-empty">Click a donor to edit the call-center record and view call history.</div>
+              <div className="call-center-empty call-center-welcome">
+                <span className="call-center-welcome-icon">☎</span>
+                <strong>Select the next donor</strong>
+                <span>Open a record to see the contact source, call the donor, record the outcome, and review previous attempts.</span>
+              </div>
             )}
           </div>
         </div>
