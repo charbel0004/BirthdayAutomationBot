@@ -130,6 +130,7 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
   const [addOverlayOpen, setAddOverlayOpen] = useState(false);
   const donatedCount = donors.filter((donor) => Boolean(donor.lastDonationDate)).length;
   const withLocationCount = donors.filter((donor) => Boolean(donor.location)).length;
+  const activeCount = donors.filter((donor) => donor.active !== false).length;
   const eligibleCount = donors.filter((donor) => {
     if (!donor.nextEligibleDonationDate) return false;
     return donor.nextEligibleDonationDate <= new Date().toISOString().slice(0, 10);
@@ -181,6 +182,10 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
             <strong>{withLocationCount}</strong>
           </article>
           <article className="repository-summary-card">
+            <span>Call center enabled</span>
+            <strong>{activeCount}</strong>
+          </article>
+          <article className="repository-summary-card">
             <span>Eligible now</span>
             <strong>{eligibleCount}</strong>
           </article>
@@ -218,6 +223,7 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
                 <th>Latest location</th>
                 <th>Last donation</th>
                 <th>Next eligible</th>
+                <th>Call center</th>
               </tr>
             </thead>
             <tbody>
@@ -225,7 +231,7 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
                 <DonorRow key={donor.id} donor={donor} onSave={onSaveDonor} onDelete={onDeleteDonor} editable={isAdmin} />
               )) : (
                 <tr>
-                  <td colSpan="8">
+                  <td colSpan="9">
                     <div className="repository-empty-state">
                       <strong>No donor records found.</strong>
                       <span>Try broader filters or add an interested donor to start building the repository.</span>
@@ -238,7 +244,7 @@ export function BloodDonorsRepositoryPage({ donors, filters, setFilters, draft, 
         </div>
         <div className="repository-card-list">
           {donors.length ? donors.map((donor) => (
-            <DonorRepositoryCard key={donor.id} donor={donor} />
+            <DonorRepositoryCard key={donor.id} donor={donor} onSave={onSaveDonor} editable={isAdmin} />
           )) : (
             <div className="call-center-empty">No donor records found. Try broader filters or add an interested donor.</div>
           )}

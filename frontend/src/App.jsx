@@ -160,6 +160,7 @@ export default function App() {
     if ((filters.source || '').trim()) params.set('source', filters.source.trim());
     if ((filters.callStatus || '').trim()) params.set('callStatus', filters.callStatus.trim());
     if ((options.phone || '').trim()) params.set('phone', options.phone.trim());
+    if (options.includeInactive) params.set('includeInactive', 'true');
     if (!eligibleOnly) params.set('eligibleOnly', 'false');
     if (options.limit) params.set('limit', String(options.limit));
     const query = params.toString();
@@ -387,7 +388,7 @@ export default function App() {
       api('/api/blood-drive/stats', { token }),
       api(buildDonorQuery(donorFilters, true), { token }),
       includeAllLocations ? api('/api/blood-drive/locations?activeOnly=false', { token }) : Promise.resolve(null),
-      includeRepository ? api(buildDonorQuery(repositoryFilters, false), { token }) : Promise.resolve(null)
+      includeRepository ? api(buildDonorQuery(repositoryFilters, false, { includeInactive: true }), { token }) : Promise.resolve(null)
     ]);
     setDonorStats(statsPayload);
     setEligibleDonors(eligiblePayload);
@@ -470,7 +471,7 @@ export default function App() {
     }
 
     if (includeRepository) {
-      requests.push(api(buildDonorQuery(repositoryFilters, false), { token }).then(setAllDonors));
+      requests.push(api(buildDonorQuery(repositoryFilters, false, { includeInactive: true }), { token }).then(setAllDonors));
     }
 
     if (page === pages.donationLocations) {
@@ -743,9 +744,35 @@ export default function App() {
   };
 
   const updateDonor = async (id, payload) => {
-    await api(`/api/blood-drive/donors/${id}`, { token, method: 'PUT', body: payload });
+    const isVisibilityOnly = Object.keys(payload || {}).length === 1 && typeof payload.active === 'boolean';
+
+    if (isVisibilityOnly) {
+      const previousDonor = allDonors.find((donor) => donor.id === id) || null;
+      setAllDonors((current) => current.map((donor) => donor.id === id ? { ...donor, active: payload.active } : donor));
+
+      try {
+        const updated = await api(`/api/blood-drive/donors/${id}`, { token, method: 'PUT', body: payload });
+        setAllDonors((current) => current.map((donor) => donor.id === id ? { ...donor, ...updated } : donor));
+        showNotice(payload.active ? 'Donor restored to the call center and collection lookup.' : 'Donor hidden from the call center and collection lookup.');
+
+        Promise.all([
+          api('/api/blood-drive/stats', { token }).then(setDonorStats),
+          api(buildDonorQuery(donorFilters, true), { token }).then(setEligibleDonors)
+        ]).catch(() => {});
+
+        return updated;
+      } catch (err) {
+        if (previousDonor) {
+          setAllDonors((current) => current.map((donor) => donor.id === id ? previousDonor : donor));
+        }
+        throw err;
+      }
+    }
+
+    const updated = await api(`/api/blood-drive/donors/${id}`, { token, method: 'PUT', body: payload });
     await refreshBloodDrive({ includeRepository: true });
     showNotice('Blood donor record updated successfully.');
+    return updated;
   };
 
   const updateEligibleDonorCall = async (id, payload) => {
@@ -831,7 +858,7 @@ export default function App() {
     setEligibleDonors(await api(buildDonorQuery(donorFilters, true), { token }));
   }, [donorFilters, token]);
   const searchRepositoryDonors = useCallback(async () => {
-    setAllDonors(await api(buildDonorQuery(repositoryFilters, false), { token }));
+    setAllDonors(await api(buildDonorQuery(repositoryFilters, false, { includeInactive: true }), { token }));
   }, [repositoryFilters, token]);
   const searchRecruitmentLeads = async () => refreshRecruitmentLeads();
 
@@ -1186,7 +1213,7 @@ export default function App() {
         }
 
         if (page === pages.repository) {
-          const repositoryPayload = await api(buildDonorQuery(repositoryFilters, false), { token });
+          const repositoryPayload = await api(buildDonorQuery(repositoryFilters, false, { includeInactive: true }), { token });
           setAllDonors(repositoryPayload);
           return;
         }

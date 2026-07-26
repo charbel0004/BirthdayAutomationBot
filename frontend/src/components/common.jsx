@@ -1094,6 +1094,19 @@ export function DonorRow({ donor, onSave, onDelete, onOpen, editable }) {
     save();
   };
 
+  const toggleActive = async () => {
+    if (!editable || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(donor.id, { active: donor.active === false });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <tr
       className={`repository-table-row${onOpen ? ' repository-table-row-clickable' : ''}`}
@@ -1118,12 +1131,23 @@ export function DonorRow({ donor, onSave, onDelete, onOpen, editable }) {
       <td>{editable ? <input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} onBlur={save} onKeyDown={handleKeyDown} /> : <span className="repository-cell-value">{donor.location}</span>}</td>
       <td><span className="repository-cell-value">{donor.lastDonationDate ? formatCompactDate(donor.lastDonationDate) : 'Not donated yet'}</span></td>
       <td><span className="repository-cell-value">{saving ? 'Saving...' : hasChanges ? 'Unsaved changes' : formatCompactDate(donor.nextEligibleDonationDate)}</span></td>
+      <td>
+        <label className={`donor-visibility-switch${saving ? ' is-saving' : ''}`} onClick={(event) => event.stopPropagation()}>
+          <span className="switch-toggle">
+            <input type="checkbox" checked={donor.active !== false} onChange={toggleActive} disabled={!editable || saving} />
+            <span className="switch-slider" />
+          </span>
+          <small>{saving ? 'Saving...' : donor.active !== false ? 'Shown' : 'Hidden'}</small>
+        </label>
+      </td>
       {onOpen ? <td><button type="button" className="secondary repository-view-button" onClick={() => onOpen(donor)}>View</button></td> : null}
     </tr>
   );
 }
 
-export function DonorRepositoryCard({ donor, onOpen }) {
+export function DonorRepositoryCard({ donor, onOpen, onSave, editable }) {
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
+  const [visibilityError, setVisibilityError] = useState('');
   const statusLabel = donor.lastDonationDate ? 'Previous donor' : 'Interested donor';
   const eligibleLabel = donor.nextEligibleDonationDate ? `Eligible ${formatCompactDate(donor.nextEligibleDonationDate)}` : 'No eligibility date';
   const rows = [
@@ -1137,6 +1161,20 @@ export function DonorRepositoryCard({ donor, onOpen }) {
     ['Updated by', donor.updatedByName || '—'],
     ['Next eligible', formatCompactDate(donor.nextEligibleDonationDate)]
   ];
+
+  const toggleActive = async (event) => {
+    event.stopPropagation();
+    if (!editable || visibilitySaving) return;
+    setVisibilitySaving(true);
+    setVisibilityError('');
+    try {
+      await onSave(donor.id, { active: donor.active === false });
+    } catch (err) {
+      setVisibilityError(err.message);
+    } finally {
+      setVisibilitySaving(false);
+    }
+  };
 
   return (
     <article
@@ -1159,6 +1197,9 @@ export function DonorRepositoryCard({ donor, onOpen }) {
         <div className="repository-card-badges">
           <span className="repository-badge">{statusLabel}</span>
           <span className="repository-badge repository-badge-soft">{eligibleLabel}</span>
+          <span className={`repository-badge ${donor.active !== false ? 'repository-badge-active' : 'repository-badge-disabled'}`}>
+            {donor.active !== false ? 'Call center enabled' : 'Hidden from call center'}
+          </span>
         </div>
       </div>
       <div className="repository-card-grid">
@@ -1169,6 +1210,20 @@ export function DonorRepositoryCard({ donor, onOpen }) {
           </div>
         ))}
       </div>
+      <div className="donor-card-visibility-row" onClick={(event) => event.stopPropagation()}>
+        <div>
+          <strong>Call center & collection lookup</strong>
+          <span>Control whether this donor appears in operational blood-drive lists.</span>
+        </div>
+        <label className={`donor-visibility-switch${visibilitySaving ? ' is-saving' : ''}`}>
+          <span className="switch-toggle">
+            <input type="checkbox" checked={donor.active !== false} onChange={toggleActive} disabled={!editable || visibilitySaving} />
+            <span className="switch-slider" />
+          </span>
+          <small>{visibilitySaving ? 'Saving...' : donor.active !== false ? 'Shown' : 'Hidden'}</small>
+        </label>
+      </div>
+      {visibilityError ? <div className="error-banner">{visibilityError}</div> : null}
       {onOpen ? <div className="repository-card-open-hint">View complete donor record →</div> : null}
     </article>
   );

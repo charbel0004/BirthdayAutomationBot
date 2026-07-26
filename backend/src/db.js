@@ -115,6 +115,11 @@ async function ensureCollections() {
 }
 
 async function ensureIndexes() {
+  await bloodDonorsCollection().updateMany(
+    { active: { $exists: false } },
+    { $set: { active: true } }
+  );
+
   const evaluationIndexes = await presentationEvaluationsCollection().indexes();
   const legacyAttemptIndexes = evaluationIndexes.filter(
     (index) =>
@@ -138,6 +143,7 @@ async function ensureIndexes() {
     bloodDonorsCollection().createIndex({ normalizedFullName: 1 }),
     bloodDonorsCollection().createIndex({ normalizedPhoneNumber: 1 }),
     bloodDonorsCollection().createIndex({ sourceOfContact: 1 }),
+    bloodDonorsCollection().createIndex({ active: 1, nextEligibleDonationDate: 1 }),
     bloodDonorsCollection().createIndex({ location: 1 }),
     bloodDonorsCollection().createIndex({ nextEligibleDonationDate: 1 }),
     donationLocationsCollection().createIndex({ normalizedName: 1 }, { unique: true }),

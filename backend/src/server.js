@@ -512,6 +512,7 @@ function sanitizeBloodDonor(entry) {
     phoneNumber: entry.phoneNumber,
     normalizedPhoneNumber: entry.normalizedPhoneNumber || normalizePhoneNumber(entry.phoneNumber),
     sourceOfContact: entry.sourceOfContact || '',
+    active: entry.active !== false,
     location: entry.location || '',
     locationHistory: buildLocationHistory(entry.locationHistory, entry.location || ''),
     contacted: entry.contacted === true,
@@ -829,6 +830,7 @@ async function createBloodDonorProspect({ firstName, lastName, dateOfBirth, phon
     phoneNumber: trimmedPhoneNumber,
     normalizedPhoneNumber: normalizePhoneNumber(trimmedPhoneNumber),
     sourceOfContact: trimmedSourceOfContact,
+    active: true,
     location: '',
     locationHistory: [],
     contacted: false,
@@ -941,7 +943,7 @@ async function buildDashboardSummary() {
       $expr: { $lte: ['$quantity', '$reorderPoint'] }
     }),
     bloodDonorsCollection().countDocuments(),
-    bloodDonorsCollection().countDocuments({ nextEligibleDonationDate: { $lte: today } }),
+    bloodDonorsCollection().countDocuments({ active: { $ne: false }, nextEligibleDonationDate: { $lte: today } }),
     queteShiftsCollection().countDocuments({ isActive: { $ne: false } }),
     queteReservationsCollection().countDocuments(),
     presentationTopicsCollection().countDocuments(),
@@ -2037,9 +2039,14 @@ app.get('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => 
   const callStatusFilter = String(req.query.callStatus || '').trim();
   const phoneFilter = normalizePhoneNumber(req.query.phone || '');
   const eligibleOnly = String(req.query.eligibleOnly || 'true') !== 'false';
+  const includeInactive = String(req.query.includeInactive || 'false') === 'true';
   const limit = Math.min(Math.max(Number(req.query.limit || 0), 0), 50);
 
   const query = {};
+
+  if (!includeInactive) {
+    query.active = { $ne: false };
+  }
 
   if (eligibleOnly) {
     query.nextEligibleDonationDate = { $lte: today };
@@ -2095,8 +2102,8 @@ app.get('/api/blood-drive/stats', requireBloodDriveAccess, async (req, res) => {
   const today = formatDateOnly(now());
   const [total, eligible, upcoming, locationRows, ageRows] = await Promise.all([
     bloodDonorsCollection().countDocuments(),
-    bloodDonorsCollection().countDocuments({ nextEligibleDonationDate: { $lte: today } }),
-    bloodDonorsCollection().countDocuments({ nextEligibleDonationDate: { $gt: today } }),
+    bloodDonorsCollection().countDocuments({ active: { $ne: false }, nextEligibleDonationDate: { $lte: today } }),
+    bloodDonorsCollection().countDocuments({ active: { $ne: false }, nextEligibleDonationDate: { $gt: today } }),
     bloodDonorsCollection().aggregate([
       {
         $match: {
@@ -2471,6 +2478,7 @@ app.post('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) =>
 
   const payload = {
     ...basePayload,
+    active: true,
     locationHistory: buildLocationHistory([], String(location).trim()),
     userId: null
   };
@@ -2547,7 +2555,7 @@ app.put('/api/blood-drive/donors/:id', requireRole('admin'), requireBloodDriveAc
     return res.status(404).json({ error: 'The selected blood donor record could not be found.' });
   }
 
-  const { firstName, lastName, dateOfBirth, phoneNumber, sourceOfContact, location, contacted, willingToDonate, notes } = req.body || {};
+  const { firstName, lastName, dateOfBirth, phoneNumber, sourceOfContact, location, contacted, willingToDonate, active, notes } = req.body || {};
   const updates = {};
 
   if (typeof firstName === 'string' && firstName.trim()) {
@@ -2592,6 +2600,10 @@ app.put('/api/blood-drive/donors/:id', requireRole('admin'), requireBloodDriveAc
 
   if (typeof willingToDonate === 'boolean') {
     updates.willingToDonate = willingToDonate;
+  }
+
+  if (typeof active === 'boolean') {
+    updates.active = active;
   }
 
   if (typeof notes === 'string') {

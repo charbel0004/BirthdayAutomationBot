@@ -2357,6 +2357,83 @@ label {
 .repository-table-wrap th:nth-child(9),
 .repository-table-wrap td:nth-child(9) { width: 82px; min-width: 82px; text-align: center; white-space: nowrap; }
 
+.repository-table-wrap table { min-width: 1120px; }
+.repository-table-wrap th:nth-child(6),
+.repository-table-wrap td:nth-child(6) { min-width: 125px; text-align: left; }
+.repository-table-wrap th:nth-child(7),
+.repository-table-wrap td:nth-child(7),
+.repository-table-wrap th:nth-child(8),
+.repository-table-wrap td:nth-child(8) { min-width: 112px; text-align: center; white-space: nowrap; }
+.repository-table-wrap th:nth-child(9),
+.repository-table-wrap td:nth-child(9) { width: 105px; min-width: 105px; text-align: center; white-space: nowrap; }
+
+.donor-visibility-switch {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: max-content;
+  margin: 0 auto;
+  color: #5d6c77;
+  cursor: pointer;
+}
+
+.donor-visibility-switch small {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.donor-visibility-switch .switch-slider,
+.donor-visibility-switch .switch-slider::after {
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.donor-visibility-switch.is-saving .switch-slider {
+  box-shadow: 0 0 0 4px rgba(49, 90, 120, 0.09);
+}
+
+.repository-badge-active {
+  background: #e4f5ec;
+  color: #25704b;
+}
+
+.repository-badge-disabled {
+  background: #f0f2f4;
+  color: #687681;
+}
+
+.donor-card-visibility-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 13px 14px;
+  border: 1px solid #dfe6eb;
+  border-radius: 13px;
+  background: #f7fafb;
+}
+
+.donor-card-visibility-row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.donor-card-visibility-row > div > strong {
+  color: #263946;
+  font-size: 13px;
+}
+
+.donor-card-visibility-row > div > span {
+  color: #72808a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .donor-record-backdrop {
   z-index: 90;
   padding: 24px;
@@ -2616,6 +2693,8 @@ label {
   .donor-record-section { padding: 15px; border-radius: 14px; }
   .donor-record-detail-grid { grid-template-columns: 1fr; }
   .donor-record-history-item > div:first-child { align-items: flex-start; flex-direction: column; }
+  .donor-card-visibility-row { align-items: flex-start; }
+  .donor-card-visibility-row .donor-visibility-switch { flex: 0 0 auto; }
 }
 
 .call-history-item {
