@@ -59,6 +59,7 @@ export default function HomePage(props) {
     onOpenBloodDrive,
     onOpenRecruitment,
     onOpenPresentations,
+    onOpenExamResults,
     onOpenQuete,
     onOpenCertificateGenerator,
     onOpenAdminBirthdays,
@@ -210,6 +211,16 @@ export default function HomePage(props) {
             role={me.user.role}
             recruitState={presentationData.recruit}
             onOpen={onOpenPresentations}
+          />
+        ) : null}
+        {(isAdmin || me.user.role === 'new recruit') ? (
+          <ModuleCard
+            title="Exam Results"
+            description={isAdmin
+              ? 'Publish exam grades for new recruits.'
+              : 'View your test names and grades.'}
+            icon={<div className="module-icon-text">📝</div>}
+            onClick={onOpenExamResults}
           />
         ) : null}
         {canAccessQuete ? (

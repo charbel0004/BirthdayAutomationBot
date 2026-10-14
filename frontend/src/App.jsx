@@ -21,6 +21,7 @@ import {
   createDefaultSettings,
   createEmptyBirthday,
   createEmptyDonorStats,
+  createEmptyExamResult,
   createEmptyLogisticsItem,
   createEmptyQueteData,
   createEmptyQueteShift,
@@ -48,6 +49,7 @@ const PresentationRouter = lazy(() => import('./pages/PresentationRouter'));
 const QueteRouter = lazy(() => import('./pages/QueteRouter'));
 const CertificateGeneratorPage = lazy(() => import('./pages/CertificateGeneratorPage'));
 const LogisticsPage = lazy(() => import('./pages/LogisticsPage'));
+const ExamResultsPage = lazy(() => import('./pages/ExamResultsPage'));
 
 const breadcrumbConfig = {
   [pages.home]: { label: 'Home' },
@@ -69,7 +71,8 @@ const breadcrumbConfig = {
   [pages.queteShiftSetup]: { label: 'Shift Setup', parent: pages.quete },
   [pages.queteReport]: { label: 'Reports', parent: pages.quete },
   [pages.queteFocals]: { label: 'Focals', parent: pages.quete },
-  [pages.certificateGenerator]: { label: 'Certificate Generator', parent: pages.home }
+  [pages.certificateGenerator]: { label: 'Certificate Generator', parent: pages.home },
+  [pages.examResults]: { label: 'Exam Results', parent: pages.home }
 };
 
 export default function App() {
@@ -88,6 +91,9 @@ export default function App() {
   const [newLogisticsItem, setNewLogisticsItem] = useState(createEmptyLogisticsItem);
   const [newBirthday, setNewBirthday] = useState(createEmptyBirthday);
   const [newUser, setNewUser] = useState(createEmptyUser);
+  const [examResults, setExamResults] = useState([]);
+  const [examResultDraft, setExamResultDraft] = useState(createEmptyExamResult);
+  const [examResultSaving, setExamResultSaving] = useState(false);
   const [birthdayOverlayOpen, setBirthdayOverlayOpen] = useState(false);
   const [memberBirthdayDraft, setMemberBirthdayDraft] = useState('');
   const [memberBirthdaySaving, setMemberBirthdaySaving] = useState(false);
@@ -200,6 +206,7 @@ export default function App() {
   const canAccessQuete = hasModuleAccess(me?.user, 'quete');
   const canAccessLogistics = hasModuleAccess(me?.user, 'logistics');
   const canAccessCertificateGenerator = hasModuleAccess(me?.user, 'certificateGenerator');
+  const canAccessExamResults = me?.user.role === 'admin' || me?.user.role === 'new recruit';
 
   const loadData = async () => {
     setLoading(true);
@@ -230,6 +237,10 @@ export default function App() {
       if (isAdmin) {
         requestEntries.push(['users', api('/api/users', { token })]);
         requestEntries.push(['settings', api('/api/settings', { token })]);
+      }
+
+      if (isAdmin || isRecruit) {
+        requestEntries.push(['examResults', api('/api/exam-results', { token })]);
       }
 
       const settled = await Promise.allSettled(requestEntries.map(([, request]) => request));
@@ -273,6 +284,8 @@ export default function App() {
       setRecruitmentLeadCreateError('');
       setRecruitmentFilters({ name: '', status: '' });
       setRecruitmentLeads([]);
+      setExamResults(payloads.examResults || []);
+      setExamResultDraft(createEmptyExamResult());
 
       if (isAdmin) {
         setUsers(payloads.users || []);
@@ -356,6 +369,39 @@ export default function App() {
     setMe((current) => (current ? { ...current, ...mePayload } : mePayload));
   };
 
+  const refreshExamResults = async () => {
+    const payload = await api('/api/exam-results', { token });
+    setExamResults(payload);
+    return payload;
+  };
+
+  const createExamResult = async (event) => {
+    event.preventDefault();
+    setExamResultSaving(true);
+    setError('');
+    try {
+      await api('/api/exam-results', { token, method: 'POST', body: examResultDraft });
+      setExamResultDraft(createEmptyExamResult());
+      await refreshExamResults();
+      showNotice('Exam result published successfully.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExamResultSaving(false);
+    }
+  };
+
+  const deleteExamResult = async (result) => {
+    if (!window.confirm(`Delete the ${result.examName} result for ${result.recruit?.displayName || 'this recruit'}?`)) return;
+    try {
+      await api(`/api/exam-results/${result.id}`, { token, method: 'DELETE' });
+      await refreshExamResults();
+      showNotice('Exam result deleted.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const refreshDonationLocations = async ({ includeAll = false } = {}) => {
     const path = `/api/blood-drive/locations${includeAll ? '?activeOnly=false' : ''}`;
     const payload = await api(path, { token });
@@ -434,7 +480,8 @@ export default function App() {
       (isPresentationPage && !canAccessPresentations) ||
       (isQuetePage && !canAccessQuete) ||
       (page === pages.logistics && !canAccessLogistics) ||
-      (page === pages.certificateGenerator && !canAccessCertificateGenerator)
+      (page === pages.certificateGenerator && !canAccessCertificateGenerator) ||
+      (page === pages.examResults && !canAccessExamResults)
     ) {
       setPage(pages.home);
       return;
@@ -446,7 +493,7 @@ export default function App() {
     if (isQuetePage && canAccessQuete) {
       refreshQuete().catch((err) => setError(err.message));
     }
-  }, [token, me, page, isBloodDrivePage, isRecruitmentPage, isPresentationPage, isQuetePage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, canAccessQuete, canAccessLogistics, canAccessCertificateGenerator, presentationYear]);
+  }, [token, me, page, isBloodDrivePage, isRecruitmentPage, isPresentationPage, isQuetePage, canAccessBloodDrive, canAccessRecruitment, canAccessPresentations, canAccessQuete, canAccessLogistics, canAccessCertificateGenerator, canAccessExamResults, presentationYear]);
 
   useEffect(() => {
     if (!token || !me || (!isBloodDrivePage && !isRecruitmentPage)) {
@@ -1512,6 +1559,7 @@ export default function App() {
     { page: pages.bloodDrive, label: 'Blood Drive', visible: canAccessBloodDrive },
     { page: pages.recruitment, label: 'Recruitment', visible: canAccessRecruitment },
     { page: pages.presentations, label: 'Presentations', visible: canAccessPresentations },
+    { page: pages.examResults, label: 'Exam Results', visible: canAccessExamResults },
     { page: pages.quete, label: 'Quete', visible: canAccessQuete },
     { page: pages.certificateGenerator, label: 'Certificates', visible: canAccessCertificateGenerator }
   ].filter((item) => item.visible);
@@ -1556,6 +1604,21 @@ export default function App() {
         <CertificateGeneratorPage
           onBack={() => setPage(pages.home)}
           onNotice={showNotice}
+        />
+      );
+    }
+
+    if (page === pages.examResults && canAccessExamResults) {
+      return (
+        <ExamResultsPage
+          role={me.user.role}
+          users={users}
+          results={examResults}
+          draft={examResultDraft}
+          setDraft={setExamResultDraft}
+          saving={examResultSaving}
+          onSubmit={createExamResult}
+          onDelete={deleteExamResult}
         />
       );
     }
@@ -1721,6 +1784,7 @@ export default function App() {
         onOpenBloodDrive={() => setPage(pages.bloodDrive)}
         onOpenRecruitment={() => setPage(pages.recruitment)}
         onOpenPresentations={() => setPage(pages.presentations)}
+        onOpenExamResults={() => setPage(pages.examResults)}
         onOpenQuete={() => setPage(pages.quete)}
         onOpenCertificateGenerator={() => setPage(pages.certificateGenerator)}
         onOpenAdminBirthdays={() => setPage(pages.adminBirthdays)}

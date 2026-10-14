@@ -24,7 +24,8 @@ const REQUIRED_COLLECTIONS = [
   'presentation_slots',
   'presentation_bookings',
   'presentation_criteria',
-  'presentation_evaluations'
+  'presentation_evaluations',
+  'exam_results'
 ];
 
 function getDb() {
@@ -89,6 +90,10 @@ function presentationCriteriaCollection() {
 
 function presentationEvaluationsCollection() {
   return getDb().collection('presentation_evaluations');
+}
+
+function examResultsCollection() {
+  return getDb().collection('exam_results');
 }
 
 function now() {
@@ -172,7 +177,9 @@ async function ensureIndexes() {
     presentationEvaluationsCollection().createIndex(
       { presenterUserId: 1, attempt: 1 },
       { name: 'presenterUserId_1_attempt_1_nonunique' }
-    )
+    ),
+    examResultsCollection().createIndex({ recruitUserId: 1, createdAt: -1 }),
+    examResultsCollection().createIndex({ createdAt: -1 })
   ]);
 
   await presentationSlotsCollection().updateMany(
@@ -278,6 +285,7 @@ module.exports = {
   connectToDatabase,
   DATABASE_NAME,
   donationLocationsCollection,
+  examResultsCollection,
   getDb,
   logisticsItemsCollection,
   normalizeName,

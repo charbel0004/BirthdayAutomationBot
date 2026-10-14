@@ -11,6 +11,7 @@ const {
   connectToDatabase,
   DATABASE_NAME,
   donationLocationsCollection,
+  examResultsCollection,
   logisticsItemsCollection,
   normalizeName,
   now,
@@ -474,6 +475,19 @@ function sanitizeBirthday(entry) {
     birthdate: entry.birthdate,
     active: Boolean(entry.active),
     createdBy: entry.createdBy || null,
+    updatedAt: entry.updatedAt || null
+  };
+}
+
+function sanitizeExamResult(entry, recruit = null) {
+  return {
+    id: String(entry._id),
+    recruitUserId: String(entry.recruitUserId),
+    recruit: recruit ? sanitizeUser(recruit) : null,
+    examName: entry.examName,
+    score: Number(entry.score),
+    maximumScore: Number(entry.maximumScore),
+    createdAt: entry.createdAt || null,
     updatedAt: entry.updatedAt || null
   };
 }
@@ -1768,6 +1782,76 @@ app.put('/api/users/:id', requireRole('admin'), async (req, res) => {
   await usersCollection().updateOne({ _id: userId }, { $set: updates });
   const nextUser = await usersCollection().findOne({ _id: userId });
   res.json(sanitizeUser(nextUser));
+});
+
+app.get('/api/exam-results', requireRole('admin', 'new recruit'), async (req, res) => {
+  const query = isAdminAccount(req.account) ? {} : { recruitUserId: req.account._id };
+  const results = await examResultsCollection()
+    .find(query)
+    .sort({ createdAt: -1 })
+    .toArray();
+
+  if (!isAdminAccount(req.account)) {
+    return res.json(results.map((result) => sanitizeExamResult(result, req.account)));
+  }
+
+  const recruitIds = [...new Set(results.map((result) => String(result.recruitUserId)))]
+    .map(toObjectId)
+    .filter(Boolean);
+  const recruits = recruitIds.length
+    ? await usersCollection().find({ _id: { $in: recruitIds } }).toArray()
+    : [];
+  const recruitsById = new Map(recruits.map((recruit) => [String(recruit._id), recruit]));
+  return res.json(results.map((result) => sanitizeExamResult(
+    result,
+    recruitsById.get(String(result.recruitUserId)) || null
+  )));
+});
+
+app.post('/api/exam-results', requireRole('admin'), async (req, res) => {
+  const recruitUserId = toObjectId(req.body?.recruitUserId);
+  const examName = String(req.body?.examName || '').trim();
+  const hasScore = req.body?.score !== '' && req.body?.score !== null && req.body?.score !== undefined;
+  const hasMaximumScore = req.body?.maximumScore !== '' && req.body?.maximumScore !== null && req.body?.maximumScore !== undefined;
+  const score = Number(req.body?.score);
+  const maximumScore = Number(req.body?.maximumScore);
+
+  if (!recruitUserId || !examName || examName.length > 120) {
+    return res.status(400).json({ error: 'Please select a recruit and enter the test name.' });
+  }
+  if (!hasScore || !hasMaximumScore || !Number.isFinite(score) || !Number.isFinite(maximumScore) || maximumScore <= 0 || score < 0 || score > maximumScore) {
+    return res.status(400).json({ error: 'The score must be between 0 and the maximum score.' });
+  }
+  const recruit = await usersCollection().findOne({ _id: recruitUserId, role: 'new recruit', active: { $ne: false } });
+  if (!recruit) {
+    return res.status(404).json({ error: 'The selected new recruit could not be found.' });
+  }
+
+  const existingResult = await examResultsCollection().findOne({ recruitUserId });
+  if (existingResult) {
+    return res.status(409).json({ error: 'This new recruit already has a published exam grade.' });
+  }
+
+  const entry = {
+    recruitUserId,
+    examName,
+    score,
+    maximumScore,
+    createdByUserId: req.account._id,
+    createdAt: now(),
+    updatedAt: now()
+  };
+  const result = await examResultsCollection().insertOne(entry);
+  return res.status(201).json(sanitizeExamResult({ ...entry, _id: result.insertedId }, recruit));
+});
+
+app.delete('/api/exam-results/:id', requireRole('admin'), async (req, res) => {
+  const resultId = toObjectId(req.params.id);
+  if (!resultId) return res.status(400).json({ error: 'Invalid exam result id.' });
+
+  const deleted = await examResultsCollection().deleteOne({ _id: resultId });
+  if (!deleted.deletedCount) return res.status(404).json({ error: 'Exam result not found.' });
+  return res.status(204).send();
 });
 
 app.get('/api/birthdays', async (req, res) => {

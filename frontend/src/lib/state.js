@@ -5,6 +5,7 @@ export const pages = {
   adminSettings: 'admin-settings',
   logistics: 'logistics',
   certificateGenerator: 'certificate-generator',
+  examResults: 'exam-results',
   bloodDrive: 'blood-drive',
   eligibleDonors: 'eligible-donors',
   repository: 'repository',
@@ -55,6 +56,7 @@ const routeToPage = {
   'admin-settings': pages.adminSettings,
   logistics: pages.logistics,
   'certificate-generator': pages.certificateGenerator,
+  'exam-results': pages.examResults,
   'quete-shift-setup': pages.queteShiftSetup,
   'quete-report': pages.queteReport,
   'quete-focals': pages.queteFocals
@@ -130,6 +132,15 @@ export function createEmptyBirthday() {
     name: '',
     birthdate: '',
     active: true
+  };
+}
+
+export function createEmptyExamResult() {
+  return {
+    recruitUserId: '',
+    examName: 'GA Exam',
+    score: '',
+    maximumScore: ''
   };
 }
 
