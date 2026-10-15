@@ -25,7 +25,9 @@ const REQUIRED_COLLECTIONS = [
   'presentation_bookings',
   'presentation_criteria',
   'presentation_evaluations',
-  'exam_results'
+  'exam_results',
+  'presentation_challenges',
+  'center_commitments'
 ];
 
 function getDb() {
@@ -94,6 +96,37 @@ function presentationEvaluationsCollection() {
 
 function examResultsCollection() {
   return getDb().collection('exam_results');
+}
+
+function presentationChallengesCollection() { return getDb().collection('presentation_challenges'); }
+function centerCommitmentsCollection() { return getDb().collection('center_commitments'); }
+
+async function withTransaction(action) {
+  const session = client.startSession();
+  try { return await session.withTransaction(() => action(session)); }
+  finally { await session.endSession(); }
+}
+
+async function closeDatabase() { await client?.close(); database = undefined; client = undefined; }
+
+// Additive, repeatable migration. Existing assignments and criteria are retained.
+async function migrateAssessments() {
+  await appSettingsCollection().updateOne({ _id: 'presentation-catalog-lock' }, { $setOnInsert: { revision: 0 } }, { upsert: true });
+  const legacyId = new ObjectId('000000000000000000000001');
+  const legacy = { title: 'Legacy presentations', description: 'Previously created presentation topics.', instructions: 'Follow the instructions supplied with your assigned topic.', active: true };
+  if (await presentationTopicsCollection().countDocuments({ challengeId: { $exists: false } })) {
+    await presentationChallengesCollection().updateOne({ _id: legacyId }, { $setOnInsert: { ...legacy, normalizedTitle: normalizeName(legacy.title), createdAt: now() } }, { upsert: true });
+    await presentationTopicsCollection().updateMany({ challengeId: { $exists: false }, isAssigned: true }, { $set: { challengeId: legacyId, challengeSnapshot: { ...legacy, id: String(legacyId) } } });
+    await presentationTopicsCollection().updateMany({ challengeId: { $exists: false } }, { $set: { challengeId: legacyId } });
+  }
+  // Exam grades are published when saved; only the combined final result is gated.
+  const evaluators = await usersCollection().find({}).project({ role: 1 }).toArray();
+  for (const user of evaluators) {
+    await presentationEvaluationsCollection().updateMany({ evaluatorUserId: user._id, evaluatorRole: { $exists: false } }, { $set: { evaluatorRole: user.role === 'admin' ? 'admin' : 'member' } });
+  }
+  await presentationChallengesCollection().createIndex({ normalizedTitle: 1 }, { unique: true });
+  await centerCommitmentsCollection().createIndex({ recruitUserId: 1 }, { unique: true });
+  await presentationTopicsCollection().createIndex({ challengeId: 1 });
 }
 
 function now() {
@@ -266,6 +299,7 @@ async function connectToDatabase() {
   await ensureIndexes();
   await seedUsersFromLegacyStore();
   await seedBirthdaysFromLegacyStore();
+  await migrateAssessments();
 
   return database;
 }
@@ -279,6 +313,10 @@ function toObjectId(value) {
 }
 
 module.exports = {
+  closeDatabase,
+  withTransaction,
+  presentationChallengesCollection,
+  centerCommitmentsCollection,
   bloodDonorsCollection,
   birthdaysCollection,
   appSettingsCollection,

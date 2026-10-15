@@ -224,6 +224,14 @@ export async function generateCertificatePdf(formData, { token } = {}) {
   };
 }
 
+export async function uploadAssessmentWorkbook(file, token) {
+  const body = new FormData(); body.append('excel', file);
+  const response = await fetch(resolveApiUrl('/api/assessments/import/preview'), { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || 'Unable to preview workbook.');
+  return payload;
+}
+
 export function splitBirthdate(value) {
   if (!value || !value.includes('-')) {
     return { month: '', day: '' };
@@ -367,22 +375,4 @@ export function buildScoreDraft(criteria, savedEvaluation = null) {
     scores: nextScores,
     comment: savedEvaluation?.comment || ''
   };
-}
-
-export function calculatePresentationTotalScore(scores, criteria) {
-  if (!criteria.length) return 0;
-  const rawTotal = scores.reduce((sum, item) => sum + (item.score || 0), 0);
-  const maxTotal = criteria.length * 10;
-  return Number(((rawTotal / maxTotal) * 100).toFixed(2));
-}
-
-export function getEvaluationTotalScore(evaluation) {
-  if (Array.isArray(evaluation?.criteria) && evaluation.criteria.length) {
-    return calculatePresentationTotalScore(
-      evaluation.criteria.map((item) => ({ score: item.score || 0 })),
-      evaluation.criteria
-    );
-  }
-
-  return Number(evaluation?.totalScore || 0);
 }

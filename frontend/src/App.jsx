@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
-  calculatePresentationTotalScore,
   downloadFile,
   emptyBloodDonorInterestForm,
   emptyBloodDriveForm,
@@ -13,7 +12,6 @@ import {
   emptyPresentationSlot,
   emptyPresentationTopic,
   getCurrentYear,
-  getEvaluationTotalScore,
   getNextCriterionOrder,
   tokenKey
 } from './lib/app';
@@ -383,7 +381,7 @@ export default function App() {
       await api('/api/exam-results', { token, method: 'POST', body: examResultDraft });
       setExamResultDraft(createEmptyExamResult());
       await refreshExamResults();
-      showNotice('Exam result published successfully.');
+      showNotice('Exam result published and visible to the recruit.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -457,6 +455,18 @@ export default function App() {
     window.addEventListener('hashchange', syncPageFromHash);
     return () => window.removeEventListener('hashchange', syncPageFromHash);
   }, []);
+
+  useEffect(() => {
+    if (!token || page !== pages.examResults || !canAccessExamResults) return;
+    let active = true;
+    const refresh = () => {
+      setExamResults([]);
+      api('/api/exam-results', { token }).then((results) => { if (active) setExamResults(results); }).catch((err) => { if (active) setError(err.message); });
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => { active = false; window.removeEventListener('focus', refresh); };
+  }, [token, page, canAccessExamResults]);
 
   useEffect(() => {
     const nextHash = getHashForPage(page);
@@ -1310,8 +1320,10 @@ export default function App() {
       await api('/api/presentations/spin', { token, method: 'POST', body: {} });
       await refreshPresentation();
       showNotice('Presentation topic assigned successfully.');
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     } finally {
       setPresentationSpinning(false);
     }
@@ -1451,49 +1463,10 @@ export default function App() {
     const attempt = Number(presentationScoreDraft.attempt || 1);
     const presenterId = presentationScoreDraft.presenterId;
     const scores = presentationData.activeCriteria.map((criterion) => ({ criterionId: criterion.id, score: Number(presentationScoreDraft.scores[criterion.id] || 1) }));
-    const totalScore = calculatePresentationTotalScore(scores, presentationData.activeCriteria);
-    const optimisticEvaluation = {
-      id: `optimistic-${presenterId}-${me.user.id}-${attempt}`,
-      presenterUserId: presenterId,
-      evaluatorUserId: me.user.id,
-      evaluator: me.user,
-      attempt,
-      totalScore,
-      comment: presentationScoreDraft.comment,
-      updatedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      criteria: scores.map((item) => {
-        const criterion = presentationData.activeCriteria.find((entry) => entry.id === item.criterionId);
-        return { criterionId: item.criterionId, title: criterion?.title || '', order: criterion?.order || 0, score: item.score };
-      })
-    };
-
-    setPresentationScoreOverlayOpen(false);
-    setPresentationData((current) => ({
-      ...current,
-      presenters: current.presenters.map((presenter) => {
-        if (presenter.user.id !== presenterId) return presenter;
-
-        const nextEvaluations = [...(presenter.evaluations || []).filter((item) => !(item.evaluatorUserId === me.user.id && Number(item.attempt) === attempt)), optimisticEvaluation].sort((a, b) => Number(a.attempt || 1) - Number(b.attempt || 1));
-        const nextMyEvaluations = [...(presenter.myEvaluations || []).filter((item) => Number(item.attempt) !== attempt), optimisticEvaluation].sort((a, b) => Number(a.attempt || 1) - Number(b.attempt || 1));
-        const shouldRecalculateAverages = me.user.role === 'admin';
-        const attempt1Evaluations = nextEvaluations.filter((item) => Number(item.attempt) === 1);
-        const attempt2Evaluations = nextEvaluations.filter((item) => Number(item.attempt) === 2);
-
-        return {
-          ...presenter,
-          evaluations: nextEvaluations,
-          myEvaluations: nextMyEvaluations,
-          myEvaluation: optimisticEvaluation,
-          evaluation: optimisticEvaluation,
-          attempt1Average: shouldRecalculateAverages ? (attempt1Evaluations.length ? Number((attempt1Evaluations.reduce((sum, item) => sum + getEvaluationTotalScore(item), 0) / attempt1Evaluations.length).toFixed(2)) : null) : presenter.attempt1Average,
-          attempt2Average: shouldRecalculateAverages ? (attempt2Evaluations.length ? Number((attempt2Evaluations.reduce((sum, item) => sum + getEvaluationTotalScore(item), 0) / attempt2Evaluations.length).toFixed(2)) : null) : presenter.attempt2Average
-        };
-      })
-    }));
 
     try {
       await api(`/api/presentations/evaluations/${presenterId}`, { token, method: 'PUT', body: { attempt, scores, comment: presentationScoreDraft.comment } });
+      setPresentationScoreOverlayOpen(false);
       await refreshPresentation({ refreshReport: true });
       showNotice(`Attempt ${attempt} evaluation saved successfully.`);
     } catch (err) {
@@ -1611,6 +1584,8 @@ export default function App() {
     if (page === pages.examResults && canAccessExamResults) {
       return (
         <ExamResultsPage
+          token={token}
+          onRefresh={refreshExamResults}
           role={me.user.role}
           users={users}
           results={examResults}
@@ -1697,6 +1672,8 @@ export default function App() {
     if (page === pages.presentations && canAccessPresentations) {
       return (
         <PresentationRouter
+          token={token}
+          onRefresh={() => refreshPresentation({ refreshReport: true })}
           role={me.user.role}
           presentation={presentationData}
           report={presentationReport}

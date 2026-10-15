@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ChallengeDetails, ChallengeManagement } from './AssessmentPanels';
 import { CriterionRow, PresentationYearFilter } from '../components/common';
 import {
   addMinutesToDateTimeLocal,
   buildScoreDraft,
   formatDateTime,
-  getEvaluationTotalScore,
   getMyEvaluationForAttempt,
   isAttemptScoredByCurrentUser
 } from '../lib/app';
@@ -32,6 +32,7 @@ export function PresentationScoreOverlay({
           <button type="button" className="secondary" onClick={onClose}>Close</button>
         </div>
         <form onSubmit={onSubmit} className="grid-form presentation-score-form">
+          <ChallengeDetails topic={presenter.topic} />
           <div className="score-grid">
             {criteria.map((criterion) => (
               <label key={criterion.id} className="slider-field">
@@ -84,7 +85,7 @@ export function PresentationReportOverlay({ isOpen, presenter, onClose }) {
             <article key={evaluation.id} className="presentation-report-evaluation-card">
               <div className="presentation-report-evaluation-head">
                 <strong>{evaluation.evaluator?.displayName || evaluation.evaluator?.username || 'Unknown evaluator'}</strong>
-                <span>Total: {evaluation.totalScore}</span>
+                <span>Score: {evaluation.totalScore ?? 'Incomplete'}/100 · Weight: {evaluation.weight ?? '—'}</span>
               </div>
               <div className="presentation-report-criteria">
                 {evaluation.criteria.map((criterion) => (
@@ -127,17 +128,105 @@ export function PresentationReportOverlay({ isOpen, presenter, onClose }) {
   );
 }
 
-export function TopicWheel({ labels, spinning }) {
+/**
+ * A numbered SVG wheel: long titles are shown in the adjacent, accessible legend.
+ * The server remains the source of truth for the assigned topic.
+ */
+export function TopicWheel({ options = [], spinning = false, selectedId = null, onAnimationComplete }) {
+  const [rotation, setRotation] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const lastAnimatedSelection = useRef(null);
+  const timer = useRef(null);
+  const completionCallback = useRef(onAnimationComplete);
+  const visual = useRef(null);
+  completionCallback.current = onAnimationComplete;
+  const count = options.length;
+  const segmentAngle = count ? 360 / count : 360;
+  const center = 150;
+  const radius = 132;
+  const selectedIndex = options.findIndex((option) => option.id === selectedId);
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const duration = reducedMotion ? 250 : 2400;
+  const groups = [...new Set(options.map((option) => option.challenge?.title || 'Presentation'))];
+
+  useEffect(() => {
+    if (spinning) visual.current?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+  }, [spinning, reducedMotion]);
+
+  useEffect(() => {
+    if (!spinning || selectedId || reducedMotion) return;
+    let frame, last;
+    const tick = (time) => {
+      if (last !== undefined) setRotation((value) => value + Math.min(time - last, 50) * .48);
+      last = time;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [spinning, selectedId, reducedMotion]);
+
+  useEffect(() => {
+    if (!selectedId || !count || selectedIndex < 0 || lastAnimatedSelection.current === selectedId) return;
+    lastAnimatedSelection.current = selectedId;
+    setAnimating(true);
+    // Segment i is centered at i * segmentAngle. Align that center with the top pointer.
+    const targetMod = ((-selectedIndex * segmentAngle) % 360 + 360) % 360;
+    setRotation((previous) => {
+      const previousMod = ((previous % 360) + 360) % 360;
+      const correction = ((targetMod - previousMod) % 360 + 360) % 360;
+      return previous + (reducedMotion ? 0 : 360 * 3) + correction;
+    });
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      setAnimating(false);
+      completionCallback.current?.();
+    }, duration + 150);
+    return () => clearTimeout(timer.current);
+  }, [selectedId, selectedIndex, count, segmentAngle, duration, reducedMotion]);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const polar = (degrees, distance) => {
+    const radians = (degrees - 90) * Math.PI / 180;
+    return [center + distance * Math.cos(radians), center + distance * Math.sin(radians)];
+  };
+  const wedge = (index) => {
+    const start = index * segmentAngle - segmentAngle / 2;
+    const end = start + segmentAngle;
+    const [x1, y1] = polar(start, radius);
+    const [x2, y2] = polar(end, radius);
+    return `M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${segmentAngle > 180 ? 1 : 0} 1 ${x2} ${y2} Z`;
+  };
+
   return (
-    <div className="presentation-wheel-shell">
-      <div className="presentation-wheel-pointer" aria-hidden="true">▼</div>
-      <div className={`presentation-wheel ${spinning ? 'is-spinning' : ''}`}>
-        <div className="presentation-wheel-inner">
-          <div className="presentation-wheel-labels">
-            {labels.length ? labels.slice(0, 8).map((label) => <span key={label}>{label}</span>) : <span>No topics</span>}
-          </div>
-        </div>
+    <div className="topic-wheel-area">
+      <div ref={visual} className="topic-wheel-visual" aria-label={`Presentation topic wheel with ${count} topics`}>
+        <svg viewBox="0 0 300 300" className="topic-wheel-svg" role="img" aria-label={count ? `${count} numbered topic segments` : 'No topics available'}>
+          {!count && <circle cx={center} cy={center} r={radius} fill="#f2edef" stroke="#e2d6d9" strokeWidth="2" />}
+          <g style={{ transform: `rotate(${rotation}deg)`, transformOrigin: '150px 150px', transition: animating ? `transform ${duration}ms cubic-bezier(0.12, 0.75, 0.12, 1)` : 'none' }}>
+            {options.map((option, index) => {
+              const [tx, ty] = polar(index * segmentAngle, count > 24 ? 107 : 96);
+              return (
+                <g key={option.id}>
+                  {count === 1 ? <circle cx={center} cy={center} r={radius} fill="#bf2331" /> : <path d={wedge(index)} fill={index % 2 ? '#f4ddd8' : '#bf2331'} stroke="#fff" strokeWidth="1.5" />}
+                  <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={count > 35 ? 9 : count > 24 ? 11 : 13} fontWeight="700" fill={index % 2 ? '#8b1722' : '#fff'} transform={`rotate(${index * segmentAngle}, ${tx}, ${ty})`}>{index + 1}</text>
+                </g>
+              );
+            })}
+            <circle cx="150" cy="150" r="22" fill="#fff" stroke="#a51d29" strokeWidth="5" />
+            <circle cx="150" cy="150" r="8" fill="#bf2331" />
+          </g>
+          <path d="M 138 0 L 162 0 L 150 31 Z" fill="#8e1722" stroke="#fff" strokeWidth="2" />
+        </svg>
       </div>
+      <div className="topic-wheel-legend" aria-label="Topic number legend">
+        <strong>{groups.length} challenges · {count} available topics</strong>
+        <p>Each number represents one topic. Its challenge defines the format and instructions.</p>
+        {groups.map((group) => <details key={group} className="wheel-challenge-group"><summary>{group}<small>{options.filter((option) => (option.challenge?.title || 'Presentation') === group).length} topics</small></summary><ol>
+          {options.map((option, index) => (option.challenge?.title || 'Presentation') === group && <li key={option.id}><span className="topic-wheel-legend-number">{index + 1}</span><div><strong>{option.title}</strong>{option.description && <p>{option.description}</p>}</div></li>)}
+        </ol></details>)}
+      </div>
+      <p className="topic-wheel-status" role="status">{spinning || animating ? (selectedId ? 'The wheel is settling on your topic…' : 'Spinning and securing your assignment…') : count ? 'One spin. One topic. Your challenge starts here.' : 'No topics available yet. Please check back later.'}</p>
     </div>
   );
 }
@@ -236,6 +325,29 @@ export function PresentationPresenterCards({ presenters, canToggleSecondAttempt,
 export function RecruitPresentationPage({ presentation, spinning, onSpin, onBookSlot, onBack }) {
   const recruit = presentation.recruit;
   const ownBookingUserId = recruit?.booking?.booking?.userId || '';
+  const [wheelPending, setWheelPending] = useState(false);
+  const [wheelOptions, setWheelOptions] = useState([]);
+  const [justRevealed, setJustRevealed] = useState(false);
+  const revealHeading = useRef(null);
+  useEffect(() => {
+    if (justRevealed) {
+      revealHeading.current?.focus({ preventScroll: true });
+      revealHeading.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    }
+  }, [justRevealed]);
+  const selectedTopicId = recruit?.topic?.id || null;
+  const onSpinWithAnimation = async () => {
+    if (wheelPending || spinning || recruit?.topic) return;
+    setWheelOptions([...(recruit?.availableTopics || [])]);
+    setWheelPending(true);
+    try { if (await onSpin() === false) setWheelPending(false); }
+    catch { setWheelPending(false); }
+  };
+  useEffect(() => {
+    if (wheelPending && selectedTopicId && !wheelOptions.some((option) => option.id === selectedTopicId)) {
+      setWheelPending(false);
+    }
+  }, [wheelPending, selectedTopicId, wheelOptions]);
 
   return (
     <div className="page-shell">
@@ -243,40 +355,39 @@ export function RecruitPresentationPage({ presentation, spinning, onSpin, onBook
         <div>
           <div className="panel-kicker">Presentations</div>
           <h2>New Recruit Presentation</h2>
-          <p>Spin once to receive your topic, then reserve an available presentation time slot.</p>
+          <p>Spin once to receive your challenge and topic, then reserve an available presentation time slot.</p>
         </div>
         <div className="top-actions">
         </div>
       </div>
-      {!recruit?.topic ? (
+      {(!recruit?.topic || wheelPending) ? (
         <section className="panel presentation-spin-panel">
           <div className="presentation-spin-layout">
             <div className="presentation-spin-copy">
-              <h2>Presentation Topic Wheel</h2>
-              <p>Topics are assigned once. When you spin, the topic is locked to your account.</p>
+              <h2>Presentation Challenge Wheel</h2>
+              <p>A challenge is the presentation format. A topic is the specific subject you will work on.</p>
+              <ol className="challenge-steps"><li><strong>Explore</strong><span>Browse the challenges and their available topics.</span></li><li><strong>Spin once</strong><span>Receive one random available topic and its challenge. The assignment is permanent.</span></li><li><strong>Prepare & present</strong><span>Read your instructions, then reserve a time slot.</span></li></ol>
               <div className="stats-row compact-stats">
                 <article className="stat-card"><span>Available topics</span><strong>{presentation.stats.availableTopics}</strong></article>
                 <article className="stat-card"><span>Booked slots</span><strong>{presentation.stats.bookedPresentations}</strong></article>
               </div>
-              <button type="button" onClick={onSpin} disabled={spinning || !recruit?.availableTopicTitles?.length}>
-                {spinning ? 'Assigning topic...' : 'Spin for Topic'}
+              <button type="button" onClick={onSpinWithAnimation} disabled={spinning || wheelPending || !recruit?.availableTopics?.length}>
+                {spinning || wheelPending ? 'Assigning challenge...' : 'Spin for Challenge'}
               </button>
             </div>
-            <TopicWheel labels={recruit?.availableTopicTitles || []} spinning={spinning} />
+            <TopicWheel options={wheelPending ? wheelOptions : (recruit?.availableTopics || [])} spinning={wheelPending} selectedId={wheelPending ? selectedTopicId : null} onAnimationComplete={() => { setJustRevealed(true); setWheelPending(false); }} />
           </div>
         </section>
       ) : (
-        <section className="panel">
+        <section className={`panel assignment-reveal ${justRevealed ? 'is-new' : ''}`} role="status">
           <div className="section-head">
             <div>
-              <h2>Your Assigned Topic</h2>
-              <p>This topic is already selected for your presentation.</p>
+              <h2 ref={revealHeading} tabIndex={-1} className="assignment-reveal-heading">Your Challenge & Topic</h2>
+              <p>Your assignment is saved. You can return to these instructions at any time.</p>
             </div>
           </div>
           <article className="presentation-topic-card">
-            <div className="panel-kicker">Assigned Topic</div>
-            <h3>{recruit.topic.title}</h3>
-            <p>{recruit.topic.description || 'No description added for this subject yet.'}</p>
+            <ChallengeDetails topic={recruit.topic} expanded />
           </article>
         </section>
       )}
@@ -293,7 +404,7 @@ export function RecruitPresentationPage({ presentation, spinning, onSpin, onBook
             <article key={slot.id} className={`slot-card ${slot.booking?.userId === ownBookingUserId ? 'is-own' : ''}`}>
               <h3>{formatDateTime(slot.startAt)}</h3>
               <p>Ends at {formatDateTime(slot.endAt)}</p>
-              <button type="button" className={slot.isBooked && slot.booking?.userId !== ownBookingUserId ? 'secondary' : undefined} disabled={!recruit?.topic || (slot.isBooked && slot.booking?.userId !== ownBookingUserId)} onClick={() => onBookSlot(slot.id)}>
+              <button type="button" className={slot.isBooked && slot.booking?.userId !== ownBookingUserId ? 'secondary' : undefined} disabled={wheelPending || !recruit?.topic || (slot.isBooked && slot.booking?.userId !== ownBookingUserId)} onClick={() => onBookSlot(slot.id)}>
                 {slot.booking?.userId === ownBookingUserId ? 'Selected' : slot.isBooked ? `Taken${slot.bookedByName ? ` by ${slot.bookedByName}` : ''}` : 'Reserve Slot'}
               </button>
             </article>
@@ -376,6 +487,8 @@ export function MemberPresentationPage({ presentation, scoreDraft, setScoreDraft
 
 export function AdminPresentationPage(props) {
   const {
+    token,
+    onRefresh,
     presentation,
     report,
     selectedYear,
@@ -445,23 +558,7 @@ export function AdminPresentationPage(props) {
           <article className="stat-card"><span>Average score</span><strong>{presentation.stats.averageScore}</strong></article>
         </div>
       </section>
-      <section className="panel">
-        <div className="section-head"><div><h2>Presentation Subjects</h2><p>Add or remove the subjects available on the spinning wheel.</p></div></div>
-        <form className="grid-form admin-inline-form" onSubmit={onCreateTopic}>
-          <input placeholder="Subject title" value={topicDraft.title} onChange={(event) => setTopicDraft({ ...topicDraft, title: event.target.value })} required />
-          <input placeholder="Subject description" value={topicDraft.description} onChange={(event) => setTopicDraft({ ...topicDraft, description: event.target.value })} />
-          <button type="submit">Add Subject</button>
-        </form>
-        <div className="table-wrap"><table><thead><tr><th>Title</th><th>Description</th><th>Status</th><th>Assigned at</th><th>Actions</th></tr></thead><tbody>{(presentation.admin?.topics || []).map((topic) => (
-          <tr key={topic.id}>
-            <td>{topic.title}</td>
-            <td>{topic.description || 'No description'}</td>
-            <td>{topic.isAssigned ? 'Assigned' : 'Available'}</td>
-            <td>{topic.assignedAt ? formatDateTime(topic.assignedAt) : 'Not assigned'}</td>
-            <td className="actions"><button type="button" className="secondary" disabled={topic.isAssigned} onClick={() => onDeleteTopic(topic.id)}>Delete</button></td>
-          </tr>
-        ))}</tbody></table></div>
-      </section>
+      <ChallengeManagement token={token} onRefresh={onRefresh} />
       <section className="panel">
         <div className="section-head"><div><h2>Presentation Time Spots</h2><p>Add the presentation slots that new recruits can reserve.</p></div></div>
         <form className="grid-form slot-form" onSubmit={onCreateSlot}>
@@ -506,7 +603,7 @@ export function AdminPresentationPage(props) {
         <PresentationScoringTable presenters={presentersWithTopics} canToggleSecondAttempt onToggleSecondAttempt={onToggleSecondAttempt} onOpenScore={openScoreOverlay} />
       </section>
       <section className="panel">
-        <div className="section-head"><div><h2>Results and Report</h2><p>Review ranked results and generate the latest presentation report.</p></div><button type="button" onClick={onGenerateReport}>Refresh Report</button></div>
+        <div className="section-head"><div><h2>Presentation attempt details</h2><p>Review weighted averages and individual criterion scores.</p></div><button type="button" onClick={onGenerateReport}>Refresh Report</button></div>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Presenter</th><th>Topic</th><th>Slot</th><th>Attempt 1 Avg</th><th>Attempt 1 Details</th><th>Attempt 2 Avg</th><th>Attempt 2 Details</th><th>Total score</th><th>Updated</th></tr></thead>

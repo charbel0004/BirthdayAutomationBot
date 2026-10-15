@@ -5,6 +5,8 @@ import {
 } from './presentations';
 
 export default function PresentationRouter({
+  token,
+  onRefresh,
   role,
   presentation,
   report,
@@ -50,6 +52,8 @@ export default function PresentationRouter({
   if (role === 'admin') {
     return (
       <AdminPresentationPage
+        token={token}
+        onRefresh={onRefresh}
         presentation={presentation}
         report={report}
         selectedYear={selectedYear}

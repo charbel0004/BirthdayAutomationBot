@@ -22,6 +22,7 @@ const {
   presentationEvaluationsCollection,
   presentationSlotsCollection,
   presentationTopicsCollection,
+  presentationChallengesCollection,
   recruitmentInterestLeadsCollection,
   toObjectId,
   usersCollection
@@ -30,6 +31,8 @@ const { startBirthdayScheduler, runBirthdayCheck, runLogisticsCheck } = require(
 const { readTelegramSettings, writeTelegramSettings } = require('./settings');
 const { dataFile } = require('./store');
 const { generateCertificates } = require('./certificate-generator');
+const { assessmentRouter, readWeights, assignChallenge, assignedTopicFor, publicChallenge } = require('./assessments');
+const { weightedPresentation, evaluationScore, round, examScore } = require('./assessment-scoring');
 
 const PORT = Number(process.env.PORT || 4000);
 const app = express();
@@ -60,7 +63,7 @@ app.use(cors({
     return callback(null, false);
   }
 }));
-app.use(express.json());
+app.use(express.json({ limit: '4mb' }));
 
 const USER_ROLES = ['admin', 'member', 'new recruit'];
 const MODULE_ACCESS_KEYS = ['bloodDrive', 'recruitment', 'presentations', 'quete', 'logistics', 'certificateGenerator'];
@@ -487,6 +490,9 @@ function sanitizeExamResult(entry, recruit = null) {
     examName: entry.examName,
     score: Number(entry.score),
     maximumScore: Number(entry.maximumScore),
+    normalizedScore: examScore(entry) === null ? null : round(examScore(entry)),
+    passed: examScore(entry) !== null && examScore(entry) >= 60,
+    visible: true,
     createdAt: entry.createdAt || null,
     updatedAt: entry.updatedAt || null
   };
@@ -653,6 +659,9 @@ function sanitizePresentationTopic(topic) {
     id: String(topic._id),
     title: topic.title,
     description: topic.description || '',
+    challengeId: topic.challengeId ? String(topic.challengeId) : null,
+    challenge: topic.challengeSnapshot || topic.challenge || null,
+    active: topic.active !== false,
     isAssigned: Boolean(topic.isAssigned),
     assignedTo: topic.assignedTo ? String(topic.assignedTo) : null,
     assignedAt: topic.assignedAt ? formatDateTime(topic.assignedAt) : null,
@@ -706,7 +715,9 @@ function sanitizePresentationEvaluation(evaluation) {
     presenterUserId: String(evaluation.presenterUserId),
     evaluatorUserId: evaluation.evaluatorUserId ? String(evaluation.evaluatorUserId) : null,
     attempt: evaluation.attempt || 1,
-    totalScore: criteria.length ? calculatePresentationTotalScore(criteria) : (evaluation.totalScore || 0),
+    totalScore: evaluationScore(evaluation) === null ? null : round(evaluationScore(evaluation)),
+    evaluatorRole: evaluation.evaluatorRole || 'member',
+    weight: evaluation.weight ?? null,
     comment: evaluation.comment || '',
     updatedAt: evaluation.updatedAt ? formatDateTime(evaluation.updatedAt) : null,
     createdAt: evaluation.createdAt ? formatDateTime(evaluation.createdAt) : null,
@@ -719,24 +730,6 @@ function sanitizePresentationEvaluationWithEvaluator(evaluation, evaluator = nul
     ...sanitizePresentationEvaluation(evaluation),
     evaluator: evaluator ? sanitizeUser(evaluator) : null
   };
-}
-
-function calculatePresentationTotalScore(criteriaRows) {
-  if (!criteriaRows.length) return 0;
-  const rawTotal = criteriaRows.reduce((sum, item) => sum + (item.score || 0), 0);
-  const maxTotal = criteriaRows.length * 10;
-  return Number(((rawTotal / maxTotal) * 100).toFixed(2));
-}
-
-function averageScores(evaluations) {
-  if (!evaluations.length) return null;
-  const total = evaluations.reduce((sum, item) => {
-    const score = Array.isArray(item.criteria) && item.criteria.length
-      ? calculatePresentationTotalScore(item.criteria)
-      : (item.totalScore || 0);
-    return sum + score;
-  }, 0);
-  return Number((total / evaluations.length).toFixed(2));
 }
 
 async function requireAuthenticatedUser(req, res, next) {
@@ -753,6 +746,8 @@ async function requireAuthenticatedUser(req, res, next) {
   }
 
   req.account = user;
+  // Authorization must use the current database role, not a stale JWT claim.
+  req.user.role = user.role;
   return next();
 }
 
@@ -1145,6 +1140,7 @@ async function buildQueteDashboard(account) {
 
 async function buildPresentationDashboard(account, options = {}) {
   const selectedYear = parsePresentationYear(options.year);
+  const [challengeList, weights] = await Promise.all([presentationChallengesCollection().find({}).toArray(), readWeights()]);
   const [topics, slots, bookings, criteria, evaluations, recruits, allUsers] = await Promise.all([
     presentationTopicsCollection().find({}).sort({ createdAt: 1 }).toArray(),
     presentationSlotsCollection().find({}).sort({ startAt: 1 }).toArray(),
@@ -1157,6 +1153,13 @@ async function buildPresentationDashboard(account, options = {}) {
       .toArray(),
     usersCollection().find({}).toArray()
   ]);
+
+  for (const topic of topics) topic.challenge = topic.challengeSnapshot || publicChallenge(challengeList.find((item) => String(item._id) === String(topic.challengeId)));
+  for (const evaluation of evaluations) {
+    evaluation.evaluatorRole = evaluation.evaluatorRole || allUsers.find((user) => String(user._id) === String(evaluation.evaluatorUserId))?.role || 'member';
+    evaluation.weight = evaluation.evaluatorRole === 'admin' ? weights.admin : weights.member;
+  }
+  const availableTopics = topics.filter((topic) => !topic.isAssigned && topic.active !== false && topic.challenge?.active !== false && topic.challenge);
 
   const recruitIds = recruits.map((user) => user._id);
   const availableYears = Array.from(new Set([
@@ -1221,8 +1224,8 @@ async function buildPresentationDashboard(account, options = {}) {
         evaluation: latestEvaluation ? sanitizePresentationEvaluation(latestEvaluation) : null,
         evaluations: (isAdminViewer ? evaluationAttempts : myEvaluationAttempts)
           .map((item) => sanitizePresentationEvaluationWithEvaluator(item, allUsersMap.get(String(item.evaluatorUserId || '')) || null)),
-        attempt1Average: averageScores(attempt1Evaluations),
-        attempt2Average: averageScores(attempt2Evaluations),
+        attempt1Average: (() => { const score = weightedPresentation(attempt1Evaluations, weights).score; return score === null ? null : round(score); })(),
+        attempt2Average: user.allowPresentationAttemptTwo ? (() => { const score = weightedPresentation(attempt2Evaluations, weights).score; return score === null ? null : round(score); })() : null,
         myEvaluation: (() => {
           const mine = myEvaluationAttempts
             .slice()
@@ -1238,18 +1241,17 @@ async function buildPresentationDashboard(account, options = {}) {
 
   const activeSlots = slotsForYear.filter((slot) => slot.isActive !== false);
   const bookedSlotIds = new Set(bookingsForYear.map((booking) => String(booking.slotId)));
-  const filteredEvaluations = presenters.flatMap((presenter) => presenter.evaluations || []);
-  const scores = filteredEvaluations.map((item) => item.totalScore || 0);
+  const scores = presenters.map((presenter) => presenter.attempt2Average ?? presenter.attempt1Average).filter((score) => score !== null);
   const totalScore = scores.reduce((sum, value) => sum + value, 0);
 
   const stats = {
     totalTopics: topicsForYear.length,
-    availableTopics: topicsForYear.filter((topic) => !topic.isAssigned).length,
+    availableTopics: availableTopics.length,
     assignedTopics: topicsForYear.filter((topic) => topic.isAssigned).length,
     totalSlots: activeSlots.length,
     openSlots: activeSlots.filter((slot) => !bookedSlotIds.has(String(slot._id))).length,
     bookedPresentations: bookingsForYear.length,
-    evaluatedPresentations: filteredEvaluations.length,
+    evaluatedPresentations: scores.length,
     averageScore: scores.length ? Number((totalScore / scores.length).toFixed(2)) : 0
   };
 
@@ -1264,7 +1266,7 @@ async function buildPresentationDashboard(account, options = {}) {
   };
 
   if (account.role === 'new recruit') {
-    const topic = topicByAssignedTo.get(String(account._id)) || null;
+    const topic = topics.find((item) => String(item.assignedTo) === String(account._id)) || null;
     const booking = bookingByUserId.get(String(account._id)) || null;
     const bookedSlotId = booking ? String(booking.slotId) : null;
     const recruitSlots = activeSlots
@@ -1281,6 +1283,8 @@ async function buildPresentationDashboard(account, options = {}) {
       )
     );
 
+    result.presenters = [];
+    result.stats = { availableTopics: availableTopics.length, bookedPresentations: bookedSlotIds.size };
     result.recruit = {
       canSpin: !topic,
       topic: topic ? sanitizePresentationTopic(topic) : null,
@@ -1288,8 +1292,9 @@ async function buildPresentationDashboard(account, options = {}) {
         booking && slotById.get(bookedSlotId)
           ? sanitizePresentationSlot(slotById.get(bookedSlotId), booking, account)
           : null,
-      availableTopicTitles: topicsForYear.filter((item) => !item.isAssigned).map((item) => item.title),
-      slots: recruitSlots
+      availableTopicTitles: availableTopics.map((item) => `${item.challenge.title} — ${item.title}`),
+      availableTopics: availableTopics.map((item) => ({ id: String(item._id), title: item.title, description: item.description, challenge: item.challenge })),
+      slots: recruitSlots.map((slot) => ({ ...slot, bookedByName: slot.booking?.userId === String(account._id) ? slot.bookedByName : null, booking: slot.booking?.userId === String(account._id) ? slot.booking : null }))
     };
   }
 
@@ -1608,6 +1613,7 @@ app.post('/api/blood-drive/donors/public-interest/check-duplicate', async (req, 
 });
 
 app.use('/api', authMiddleware, requireAuthenticatedUser);
+app.use('/api/assessments', assessmentRouter());
 
 const requireBloodDriveAccess = requireModuleAccess('bloodDrive');
 const requireRecruitmentAccess = requireModuleAccess('recruitment');
@@ -1837,6 +1843,7 @@ app.post('/api/exam-results', requireRole('admin'), async (req, res) => {
     examName,
     score,
     maximumScore,
+    visible: true,
     createdByUserId: req.account._id,
     createdAt: now(),
     updatedAt: now()
@@ -3204,32 +3211,12 @@ app.get('/api/presentations/report', requireRole('admin'), requirePresentationsA
 });
 
 app.post('/api/presentations/spin', requireRole('new recruit'), requirePresentationsAccess, async (req, res) => {
-  const existingTopic = await presentationTopicsCollection().findOne({ assignedTo: req.account._id });
-
-  if (existingTopic) {
-    return res.status(409).json({ error: 'You already have a presentation topic.' });
+  try {
+    await assignChallenge(req.account._id);
+    res.json({ topic: sanitizePresentationTopic(await assignedTopicFor(req.account._id)) });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Unable to assign a challenge. Please retry.' });
   }
-
-  const assignedAt = now();
-  const topicResult = await presentationTopicsCollection().findOneAndUpdate(
-    { isAssigned: false },
-    {
-      $set: {
-        isAssigned: true,
-        assignedTo: req.account._id,
-        assignedAt
-      }
-    },
-    { sort: { createdAt: 1 }, returnDocument: 'after' }
-  );
-
-  const assignedTopic = topicResult?.value || topicResult;
-
-  if (!assignedTopic) {
-    return res.status(409).json({ error: 'No topics available.' });
-  }
-
-  res.json({ topic: sanitizePresentationTopic(assignedTopic) });
 });
 
 app.post('/api/presentations/book-slot', requireRole('new recruit'), requirePresentationsAccess, async (req, res) => {
@@ -3286,39 +3273,7 @@ app.post('/api/presentations/book-slot', requireRole('new recruit'), requirePres
 });
 
 app.post('/api/presentations/topics', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
-  const { title, description, topics } = req.body || {};
-
-  const docs = Array.isArray(topics)
-    ? topics
-        .map((item) => ({
-          title: String(item.title || '').trim(),
-          description: String(item.description || '').trim()
-        }))
-        .filter((item) => item.title.length >= 3)
-    : [{ title: String(title || '').trim(), description: String(description || '').trim() }].filter(
-        (item) => item.title.length >= 3
-      );
-
-  if (!docs.length) {
-    return res.status(400).json({ error: 'At least one valid presentation topic is required.' });
-  }
-
-  try {
-    const payload = docs.map((item) => ({
-      ...item,
-      isAssigned: false,
-      assignedTo: null,
-      assignedAt: null,
-      createdAt: now(),
-      createdByUserId: req.account._id,
-      createdByName: req.account.displayName || req.account.username
-    }));
-
-    const result = await presentationTopicsCollection().insertMany(payload, { ordered: false });
-    res.status(201).json({ inserted: Object.keys(result.insertedIds).length });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to add presentation subjects.' });
-  }
+  return res.status(409).json({ error: 'Create topics under a challenge using Challenge Management.' });
 });
 
 app.delete('/api/presentations/topics/:id', requireRole('admin'), requirePresentationsAccess, async (req, res) => {
@@ -3332,7 +3287,8 @@ app.delete('/api/presentations/topics/:id', requireRole('admin'), requirePresent
     return res.status(409).json({ error: 'Assigned topics cannot be deleted.' });
   }
 
-  await presentationTopicsCollection().deleteOne({ _id: topic._id });
+  const deleted = await presentationTopicsCollection().deleteOne({ _id: topic._id, isAssigned: false });
+  if (!deleted.deletedCount) return res.status(409).json({ error: 'Assigned topics cannot be deleted.' });
   res.status(204).send();
 });
 
@@ -3590,12 +3546,14 @@ app.put('/api/presentations/evaluations/:presenterId', requireRole('admin', 'mem
       });
     }
 
-    const totalScore = calculatePresentationTotalScore(rows);
+    const totalScore = round(evaluationScore({ criteria: rows, expectedCriteriaCount: activeCriteria.length }));
     const timestamp = now();
     const payload = {
       presenterUserId: presenterId,
       evaluatorUserId: req.account._id,
       attempt: nextAttempt,
+      evaluatorRole: req.account.role,
+      expectedCriteriaCount: activeCriteria.length,
       comment: String(comment || '').trim(),
       totalScore,
       criteria: rows.sort((a, b) => a.order - b.order),
@@ -3692,7 +3650,9 @@ async function startServer() {
   });
 }
 
-startServer().catch((error) => {
+if (require.main === module) startServer().catch((error) => {
   console.error('Failed to start server:', error);
   process.exit(1);
 });
+
+module.exports = { app, buildPresentationDashboard };

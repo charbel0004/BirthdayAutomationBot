@@ -1,4 +1,7 @@
 import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
+import { api } from '../lib/app';
+import { AssessmentResults } from './AssessmentPanels';
 
 function PassingConfetti() {
   const colors = ['#e53946', '#f5ba38', '#37a875', '#368ee0', '#a770dc', '#f18cab'];
@@ -21,8 +24,7 @@ function PassingConfetti() {
 }
 
 function ResultCard({ result, canDelete, onDelete }) {
-  const percentage = (Number(result.score) / Number(result.maximumScore)) * 100;
-  const passed = percentage >= 60;
+  const passed = result.passed === true;
 
   return (
     <article className={`exam-result-card ${canDelete ? '' : 'recruit-result-card'} ${passed ? 'is-passed' : 'is-not-passed'}`.trim()}>
@@ -48,18 +50,29 @@ function ResultCard({ result, canDelete, onDelete }) {
         </p>
       ) : null}
       {canDelete ? (
+        <div className="actions">
+        <span>Published · Visible to recruit</span>
         <button type="button" className="secondary exam-result-delete" onClick={() => onDelete(result)}>
           Delete result
         </button>
+        </div>
       ) : null}
     </article>
   );
 }
 
-export default function ExamResultsPage({ role, users, results, draft, setDraft, saving, onSubmit, onDelete }) {
+export default function ExamResultsPage({ token, onRefresh, role, users, results, draft, setDraft, saving, onSubmit, onDelete }) {
+  const [assessment, setAssessment] = useState(null), [error, setError] = useState('');
   const isAdmin = role === 'admin';
+  useEffect(() => {
+    if (isAdmin) return;
+    let active = true;
+    setAssessment(null); setError('');
+    api('/api/assessments/me', { token }).then((data) => { if (active) setAssessment(data); }).catch((err) => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [token, isAdmin, results]);
   const hasPassedResult = !isAdmin && results.some((result) => (
-    (Number(result.score) / Number(result.maximumScore)) * 100 >= 60
+    result.passed === true
   ));
   const recruitsWithResults = new Set(results.map((result) => result.recruitUserId));
   const recruits = users.filter((user) => (
@@ -68,20 +81,21 @@ export default function ExamResultsPage({ role, users, results, draft, setDraft,
   return (
     <div className={`page-shell exam-results-page ${hasPassedResult ? 'exam-passed-celebration' : ''}`.trim()}>
       {hasPassedResult ? <PassingConfetti /> : null}
+      {error && <div role="alert" className="error-banner">{error}</div>}
       <div className="page-header">
         <div>
           <div className="panel-kicker">{isAdmin ? 'Recruit assessment' : 'Your progress'}</div>
           <h2>Exam Results</h2>
           <p>{isAdmin
             ? 'Record exam grades for new recruits.'
-            : 'Your official GA Exam result.'}</p>
+            : 'Your exam, presentation and final score.'}</p>
         </div>
       </div>
 
       {isAdmin ? (
         <section className="panel">
           <div className="section-head">
-            <div><h2>Add an exam result</h2><p>The grade will only be visible to admins and the selected recruit.</p></div>
+            <div><h2>Add an exam result</h2><p>Saving publishes the exam grade immediately. Only the combined final score has a visibility control.</p></div>
           </div>
           <form className="grid-form exam-result-form" onSubmit={onSubmit}>
             <label>
@@ -103,7 +117,7 @@ export default function ExamResultsPage({ role, users, results, draft, setDraft,
               Out of
               <input required type="number" min="0.01" step="0.01" value={draft.maximumScore} onChange={(event) => setDraft((current) => ({ ...current, maximumScore: event.target.value }))} placeholder="100" />
             </label>
-            <button type="submit" disabled={saving || !recruits.length}>{saving ? 'Saving result...' : 'Publish result'}</button>
+            <button type="submit" disabled={saving || !recruits.length}>{saving ? 'Saving result...' : 'Save grade'}</button>
             {!recruits.length ? <p className="muted-table-value">All active new recruits already have a result, or no active recruits are available.</p> : null}
           </form>
         </section>
@@ -112,7 +126,7 @@ export default function ExamResultsPage({ role, users, results, draft, setDraft,
       <section className="panel">
         <div className="section-head">
           <div>
-            <h2>{isAdmin ? 'Published results' : 'Your results'}</h2>
+            <h2>Exam</h2>
             <p>{isAdmin ? `${results.length} result${results.length === 1 ? '' : 's'} recorded.` : 'The passing grade is 60%.'}</p>
           </div>
         </div>
@@ -127,6 +141,19 @@ export default function ExamResultsPage({ role, users, results, draft, setDraft,
           </div>
         )}
       </section>
+      {isAdmin ? <AssessmentResults token={token} revision={results} onRefresh={onRefresh} /> : <>
+        <section className="panel">
+          <div className="section-head"><div><h2>Presentation</h2><p>Your weighted presentation result.</p></div></div>
+          {!assessment ? <p>{error ? 'Unable to load presentation result.' : 'Loading…'}</p> : assessment.presentation === null ? <p>Your presentation has not been graded yet.</p> : <div className="exam-result-score"><strong>{assessment.presentation}</strong><span>out of 100 · Attempt {assessment.selectedAttempt}</span></div>}
+        </section>
+        <section className="panel">
+          <div className="section-head"><div><h2>Final Score</h2><p>Exam 40% + Presentation 40% + Center Commitment 20%.</p></div></div>
+          {!assessment ? <p>{error ? 'Unable to load final score.' : 'Loading…'}</p> : !assessment.finalVisible ? <p>Your final score has not been released yet.</p> : assessment.total === null ? <p>Incomplete — awaiting {assessment.missing.join(', ')}.</p> : <>
+            <div className="exam-result-score"><strong>{assessment.total}</strong><span>out of 100</span></div>
+            <p>Exam: {assessment.components.exam}/100 · Presentation: {assessment.components.presentation}/100 · Center Commitment: {assessment.components.commitment}/100</p>
+          </>}
+        </section>
+      </>}
     </div>
   );
 }

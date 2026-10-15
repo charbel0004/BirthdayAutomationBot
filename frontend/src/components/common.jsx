@@ -584,8 +584,8 @@ export function PresentationModuleCard({ role, recruitState, onOpen }) {
               : 'Spin the wheel to receive your presentation topic, then reserve your presentation slot.'
         }
         icon={<PresentationIcon />}
-        onClick={isLocked ? undefined : onOpen}
-        actionLabel={isLocked ? 'Scheduled' : recruitState?.topic ? 'View' : 'Spin'}
+        onClick={onOpen}
+        actionLabel={recruitState?.topic ? 'View assignment' : 'Spin'}
       />
     );
   }
