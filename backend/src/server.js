@@ -12,7 +12,9 @@ const {
   DATABASE_NAME,
   donationLocationsCollection,
   examResultsCollection,
+  logisticsActivitiesCollection,
   logisticsItemsCollection,
+  logisticsMovementsCollection,
   normalizeName,
   now,
   queteReservationsCollection,
@@ -25,14 +27,28 @@ const {
   presentationChallengesCollection,
   recruitmentInterestLeadsCollection,
   toObjectId,
-  usersCollection
+  usersCollection,
+  withTransaction
 } = require('./db');
-const { startBirthdayScheduler, runBirthdayCheck, runLogisticsCheck } = require('./scheduler');
+const { startBirthdayScheduler, runBirthdayCheck } = require('./scheduler');
 const { readTelegramSettings, writeTelegramSettings } = require('./settings');
 const { dataFile } = require('./store');
 const { generateCertificates } = require('./certificate-generator');
 const { assessmentRouter, readWeights, assignChallenge, assignedTopicFor, publicChallenge } = require('./assessments');
 const { weightedPresentation, evaluationScore, round, examScore } = require('./assessment-scoring');
+const {
+  INVENTORY_SCOPES,
+  allowedScopes,
+  can: canManageLogistics,
+  createActivity: createLogisticsActivity,
+  dashboard: buildLogisticsDashboard,
+  movementDeltas,
+  normalizeLogisticsAccess,
+  processMovement,
+  sanitizeActivity: sanitizeLogisticsActivity,
+  sanitizeItem: sanitizeUnifiedLogisticsItem,
+  sanitizeMovement: sanitizeLogisticsMovement
+} = require('./logistics');
 
 const PORT = Number(process.env.PORT || 4000);
 const app = express();
@@ -466,6 +482,11 @@ function sanitizeUser(user) {
     role: user.role,
     active: Boolean(user.active),
     moduleAccess: normalizeModuleAccess(user.role, user.moduleAccess),
+    logisticsAccess: normalizeLogisticsAccess(
+      user.role,
+      normalizeModuleAccess(user.role, user.moduleAccess).logistics,
+      user.logisticsAccess
+    ),
     isQueteFocal: user.isQueteFocal === true
   };
 }
@@ -493,26 +514,6 @@ function sanitizeExamResult(entry, recruit = null) {
     normalizedScore: examScore(entry) === null ? null : round(examScore(entry)),
     passed: examScore(entry) !== null && examScore(entry) >= 60,
     visible: true,
-    createdAt: entry.createdAt || null,
-    updatedAt: entry.updatedAt || null
-  };
-}
-
-function sanitizeLogisticsItem(entry) {
-  const isLowStock = entry.active !== false && Number(entry.quantity) <= Number(entry.reorderPoint);
-  return {
-    id: String(entry._id),
-    name: entry.name,
-    category: entry.category,
-    quantity: Number(entry.quantity),
-    unit: entry.unit || '',
-    packageUnit: entry.packageUnit || '',
-    unitsPerPackage: entry.unitsPerPackage ? Number(entry.unitsPerPackage) : null,
-    reorderPoint: Number(entry.reorderPoint),
-    location: entry.location || '',
-    notes: entry.notes || '',
-    active: entry.active !== false,
-    isLowStock,
     createdAt: entry.createdAt || null,
     updatedAt: entry.updatedAt || null
   };
@@ -1366,12 +1367,7 @@ app.get('/api/health', async (req, res) => {
     database: DATABASE_NAME,
     dataFile,
     telegramSettingsStore: 'mongodb',
-    telegramConfigured: Boolean(
-      telegram.botToken && telegram.birthdayChatId
-    ),
-    logisticsTelegramConfigured: Boolean(
-      telegram.botToken && telegram.logisticsChatId
-    )
+    telegramConfigured: Boolean(telegram.botToken && telegram.birthdayChatId)
   });
 });
 
@@ -1620,6 +1616,9 @@ const requireRecruitmentAccess = requireModuleAccess('recruitment');
 const requirePresentationsAccess = requireModuleAccess('presentations');
 const requireQueteAccess = requireModuleAccess('quete');
 const requireLogisticsAccess = requireModuleAccess('logistics');
+const requireLogisticsView = (req, res, next) => canManageLogistics(req.account, 'view')
+  ? next()
+  : res.status(403).json({ error: 'You do not have permission to view Logistics.' });
 
 app.get('/api/me', async (req, res) => {
   const [summary, telegram, ownBirthdays] = await Promise.all([
@@ -1637,8 +1636,7 @@ app.get('/api/me', async (req, res) => {
     telegram: {
       timezone: telegram.timezone,
       hasBotToken: Boolean(telegram.botToken),
-      birthdayChatId: telegram.birthdayChatId,
-      logisticsChatId: telegram.logisticsChatId
+      birthdayChatId: telegram.birthdayChatId
     },
     ownBirthdays: ownBirthdays.map(sanitizeBirthday)
   });
@@ -1688,6 +1686,7 @@ app.post('/api/users', requireRole('admin'), async (req, res) => {
     role = 'member',
     active = true,
     moduleAccess = createDefaultModuleAccess(role),
+    logisticsAccess,
     isQueteFocal = false
   } = req.body || {};
 
@@ -1706,12 +1705,14 @@ app.post('/api/users', requireRole('admin'), async (req, res) => {
     return res.status(409).json({ error: 'This username is already in use. Please choose another one.' });
   }
 
+  const normalizedModules = normalizeModuleAccess(role, moduleAccess);
   const user = {
     username: trimmedUsername,
     passwordHash: await bcrypt.hash(String(password), 10),
     displayName: String(displayName).trim(),
     role,
-    moduleAccess: normalizeModuleAccess(role, moduleAccess),
+    moduleAccess: normalizedModules,
+    logisticsAccess: normalizeLogisticsAccess(role, normalizedModules.logistics, logisticsAccess),
     isQueteFocal: Boolean(isQueteFocal),
     active: Boolean(active),
     createdAt: now(),
@@ -1735,7 +1736,7 @@ app.put('/api/users/:id', requireRole('admin'), async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  const { username, password, displayName, role, active, moduleAccess, isQueteFocal } = req.body || {};
+  const { username, password, displayName, role, active, moduleAccess, logisticsAccess, isQueteFocal } = req.body || {};
   const updates = { updatedAt: now() };
   let resolvedRole = existing.role;
 
@@ -1774,6 +1775,15 @@ app.put('/api/users/:id', requireRole('admin'), async (req, res) => {
     updates.moduleAccess = normalizeModuleAccess(
       resolvedRole,
       moduleAccess !== undefined ? moduleAccess : existing.moduleAccess
+    );
+  }
+
+  if (logisticsAccess !== undefined || moduleAccess !== undefined || role !== undefined) {
+    const resolvedModules = updates.moduleAccess || normalizeModuleAccess(resolvedRole, existing.moduleAccess);
+    updates.logisticsAccess = normalizeLogisticsAccess(
+      resolvedRole,
+      resolvedModules.logistics,
+      logisticsAccess !== undefined ? logisticsAccess : existing.logisticsAccess
     );
   }
 
@@ -1975,12 +1985,12 @@ app.delete('/api/birthdays/:id', async (req, res) => {
   return res.status(204).send();
 });
 
-app.get('/api/logistics', requireLogisticsAccess, async (req, res) => {
+app.get('/api/logistics', requireLogisticsAccess, requireLogisticsView, async (req, res) => {
   const items = await logisticsItemsCollection()
-    .find({})
-    .sort({ category: 1, name: 1 })
+    .find({ scope: { $in: allowedScopes(req.account) } })
+    .sort({ scope: 1, category: 1, name: 1 })
     .toArray();
-  res.json(items.map(sanitizeLogisticsItem));
+  res.json(items.map(sanitizeUnifiedLogisticsItem));
 });
 
 app.post('/api/logistics', requireLogisticsAccess, async (req, res) => {
@@ -1991,19 +2001,41 @@ app.post('/api/logistics', requireLogisticsAccess, async (req, res) => {
     unit = 'units',
     packageUnit = '',
     unitsPerPackage = null,
+    packageQuantity = null,
+    looseQuantity = null,
     reorderPoint = 0,
     location = '',
     notes = '',
-    active = true
+    active = true,
+    scope = 'center',
+    itemType = 'reusable',
+    targetStock = null
   } = req.body || {};
   const trimmedName = String(name || '').trim();
   const normalizedCategory = String(category || '').trim().toLowerCase();
-  const numericQuantity = Number(quantity);
+  const numericPackageQuantity = packageQuantity === null || packageQuantity === '' ? null : Number(packageQuantity);
+  const numericLooseQuantity = looseQuantity === null || looseQuantity === '' ? null : Number(looseQuantity);
   const numericReorderPoint = Number(reorderPoint);
   const trimmedPackageUnit = String(packageUnit || '').trim();
   const numericUnitsPerPackage = unitsPerPackage === null || unitsPerPackage === ''
     ? null
     : Number(unitsPerPackage);
+  const numericTargetStock = targetStock === null || targetStock === '' ? null : Number(targetStock);
+  const normalizedScope = String(scope || '').trim();
+  const normalizedItemType = String(itemType || '').trim();
+  const numericQuantity = numericPackageQuantity !== null || numericLooseQuantity !== null
+    ? Number(numericPackageQuantity || 0) * Number(numericUnitsPerPackage || 0) + Number(numericLooseQuantity || 0)
+    : Number(quantity);
+
+  if (!INVENTORY_SCOPES.some((entry) => entry.id === normalizedScope)) {
+    return res.status(400).json({ error: 'Please choose a valid inventory owner.' });
+  }
+  if (!canManageLogistics(req.account, 'manageInventory', normalizedScope)) {
+    return res.status(403).json({ error: 'You cannot add items to this inventory.' });
+  }
+  if (!['reusable', 'consumable'].includes(normalizedItemType)) {
+    return res.status(400).json({ error: 'Item type must be reusable or consumable.' });
+  }
 
   if (!trimmedName) {
     return res.status(400).json({ error: 'Please enter an item name.' });
@@ -2014,8 +2046,17 @@ app.post('/api/logistics', requireLogisticsAccess, async (req, res) => {
   if (!Number.isFinite(numericQuantity) || numericQuantity < 0) {
     return res.status(400).json({ error: 'Quantity must be zero or greater.' });
   }
+  if ((numericPackageQuantity !== null && (!Number.isFinite(numericPackageQuantity) || numericPackageQuantity < 0)) || (numericLooseQuantity !== null && (!Number.isFinite(numericLooseQuantity) || numericLooseQuantity < 0))) {
+    return res.status(400).json({ error: 'Package and loose-unit quantities must be zero or greater.' });
+  }
+  if (numericPackageQuantity !== null && !trimmedPackageUnit) {
+    return res.status(400).json({ error: 'Configure a package type and units per package before entering package stock.' });
+  }
   if (!Number.isFinite(numericReorderPoint) || numericReorderPoint < 0) {
     return res.status(400).json({ error: 'Reorder point must be zero or greater.' });
+  }
+  if (numericTargetStock !== null && (!Number.isFinite(numericTargetStock) || numericTargetStock < 0)) {
+    return res.status(400).json({ error: 'Target stock must be zero or greater.' });
   }
   if (trimmedPackageUnit && (!Number.isFinite(numericUnitsPerPackage) || numericUnitsPerPackage <= 0)) {
     return res.status(400).json({ error: 'Enter how many base units are in each package.' });
@@ -2024,7 +2065,7 @@ app.post('/api/logistics', requireLogisticsAccess, async (req, res) => {
     return res.status(400).json({ error: 'Enter a package name, such as box or bag.' });
   }
 
-  const duplicate = await logisticsItemsCollection().findOne({ normalizedName: normalizeName(trimmedName) });
+  const duplicate = await logisticsItemsCollection().findOne({ scope: normalizedScope, normalizedName: normalizeName(trimmedName) });
   if (duplicate) {
     return res.status(409).json({ error: 'A logistics item with this name already exists.' });
   }
@@ -2034,11 +2075,18 @@ app.post('/api/logistics', requireLogisticsAccess, async (req, res) => {
     name: trimmedName,
     normalizedName: normalizeName(trimmedName),
     category: normalizedCategory,
-    quantity: numericQuantity,
+    scope: normalizedScope,
+    itemType: normalizedItemType,
+    quantity: 0,
+    borrowedQuantity: 0,
+    consumedQuantity: 0,
+    lostQuantity: 0,
+    damagedQuantity: 0,
     unit: String(unit || '').trim(),
     packageUnit: trimmedPackageUnit,
     unitsPerPackage: trimmedPackageUnit ? numericUnitsPerPackage : null,
     reorderPoint: numericReorderPoint,
+    targetStock: numericTargetStock,
     location: String(location || '').trim(),
     notes: String(notes || '').trim(),
     active: Boolean(active),
@@ -2046,14 +2094,30 @@ app.post('/api/logistics', requireLogisticsAccess, async (req, res) => {
     createdAt: timestamp,
     updatedAt: timestamp
   };
-  const result = await logisticsItemsCollection().insertOne(item);
-  return res.status(201).json(sanitizeLogisticsItem({ ...item, _id: result.insertedId }));
+  let created;
+  await withTransaction(async (session) => {
+    const result = await logisticsItemsCollection().insertOne(item, { session });
+    created = { ...item, _id: result.insertedId };
+    if (numericQuantity > 0) {
+      await logisticsItemsCollection().updateOne({ _id: result.insertedId }, { $inc: movementDeltas('restock', numericQuantity) }, { session });
+      await logisticsMovementsCollection().insertOne({
+        itemId: result.insertedId, itemName: item.name, scope: normalizedScope, type: 'restock', quantity: numericQuantity, quantityMode: 'unit', enteredQuantity: numericQuantity,
+        activityId: null, activityName: '', activityDate: '', purpose: 'Opening stock', notes: 'Initial quantity when the item was created.',
+        responsibleUserId: req.account._id, responsibleUserName: req.account.displayName || req.account.username, createdAt: timestamp
+      }, { session });
+      created.quantity = numericQuantity;
+    }
+  });
+  return res.status(201).json(sanitizeUnifiedLogisticsItem(created));
 });
 
 app.put('/api/logistics/:id', requireLogisticsAccess, async (req, res) => {
   const item = await getLogisticsItemById(req.params.id);
   if (!item) {
     return res.status(404).json({ error: 'The selected logistics item could not be found.' });
+  }
+  if (!canManageLogistics(req.account, 'manageInventory', item.scope || 'center')) {
+    return res.status(403).json({ error: 'You cannot edit this inventory.' });
   }
 
   const updates = { updatedAt: now() };
@@ -2062,7 +2126,7 @@ app.put('/api/logistics/:id', requireLogisticsAccess, async (req, res) => {
     if (!trimmedName) return res.status(400).json({ error: 'Please enter an item name.' });
     const duplicate = await logisticsItemsCollection().findOne({
       _id: { $ne: item._id },
-      normalizedName: normalizeName(trimmedName)
+      scope: item.scope || 'center', normalizedName: normalizeName(trimmedName)
     });
     if (duplicate) return res.status(409).json({ error: 'A logistics item with this name already exists.' });
     updates.name = trimmedName;
@@ -2075,11 +2139,18 @@ app.put('/api/logistics/:id', requireLogisticsAccess, async (req, res) => {
     }
     updates.category = category;
   }
-  for (const field of ['quantity', 'reorderPoint']) {
+  if (req.body?.quantity !== undefined || req.body?.availableQuantity !== undefined) {
+    return res.status(400).json({ error: 'Use Add Stock or Inventory Adjustment to change quantities.' });
+  }
+  for (const field of ['reorderPoint', 'targetStock']) {
     if (req.body?.[field] !== undefined) {
+      if (field === 'targetStock' && (req.body[field] === '' || req.body[field] === null)) {
+        updates[field] = null;
+        continue;
+      }
       const value = Number(req.body[field]);
       if (!Number.isFinite(value) || value < 0) {
-        return res.status(400).json({ error: `${field === 'quantity' ? 'Quantity' : 'Reorder point'} must be zero or greater.` });
+        return res.status(400).json({ error: `${field === 'targetStock' ? 'Target stock' : 'Reorder point'} must be zero or greater.` });
       }
       updates[field] = value;
     }
@@ -2108,18 +2179,106 @@ app.put('/api/logistics/:id', requireLogisticsAccess, async (req, res) => {
     updates.unitsPerPackage = packageUnit ? unitsPerPackage : null;
   }
   if (typeof req.body?.active === 'boolean') updates.active = req.body.active;
+  if (req.body?.itemType !== undefined) {
+    const itemType = String(req.body.itemType || '');
+    if (!['reusable', 'consumable'].includes(itemType)) return res.status(400).json({ error: 'Item type must be reusable or consumable.' });
+    if (item.borrowedQuantity > 0 && itemType === 'consumable') return res.status(409).json({ error: 'Return or resolve borrowed stock before changing this item to consumable.' });
+    updates.itemType = itemType;
+  }
 
   await logisticsItemsCollection().updateOne({ _id: item._id }, { $set: updates });
   const updated = await logisticsItemsCollection().findOne({ _id: item._id });
-  return res.json(sanitizeLogisticsItem(updated));
+  return res.json(sanitizeUnifiedLogisticsItem(updated));
 });
 
 app.delete('/api/logistics/:id', requireLogisticsAccess, async (req, res) => {
   const itemId = toObjectId(req.params.id);
   if (!itemId) return res.status(404).json({ error: 'The selected logistics item could not be found.' });
+  const item = await logisticsItemsCollection().findOne({ _id: itemId });
+  if (!item) return res.status(404).json({ error: 'The selected logistics item could not be found.' });
+  if (!canManageLogistics(req.account, 'manageInventory', item.scope || 'center')) return res.status(403).json({ error: 'You cannot edit this inventory.' });
+  if (await logisticsMovementsCollection().countDocuments({ itemId })) return res.status(409).json({ error: 'Items with movement history cannot be deleted. Mark the item inactive instead.' });
   const result = await logisticsItemsCollection().deleteOne({ _id: itemId });
   if (!result.deletedCount) return res.status(404).json({ error: 'The selected logistics item could not be found.' });
   return res.status(204).send();
+});
+
+app.get('/api/logistics/dashboard', requireLogisticsAccess, requireLogisticsView, async (req, res) => {
+  res.json(await buildLogisticsDashboard(req.account, String(req.query.scope || '')));
+});
+
+app.post('/api/logistics/activities', requireLogisticsAccess, async (req, res) => {
+  try { return res.status(201).json(await createLogisticsActivity(req.account, req.body || {})); }
+  catch (error) { return res.status(error.status || 500).json({ error: error.message || 'Unable to create the activity.' }); }
+});
+
+app.get('/api/logistics/activities/:id', requireLogisticsAccess, requireLogisticsView, async (req, res) => {
+  const activityId = toObjectId(req.params.id);
+  const activity = activityId ? await logisticsActivitiesCollection().findOne({ _id: activityId }) : null;
+  if (!activity) return res.status(404).json({ error: 'The selected activity could not be found.' });
+  const accountScopes = allowedScopes(req.account);
+  if (!accountScopes.includes(activity.scope)) return res.status(403).json({ error: 'You cannot view this program activity.' });
+  const activityItemScopes = [activity.scope, ...(canManageLogistics(req.account, 'recordMovements', activity.scope) || accountScopes.includes('center') ? ['center'] : [])];
+  const [items, movements] = await Promise.all([
+    logisticsItemsCollection().find({ scope: { $in: activityItemScopes }, active: { $ne: false } }).sort({ scope: 1, name: 1 }).toArray(),
+    logisticsMovementsCollection().find({ activityId }).sort({ activityDate: 1, createdAt: 1 }).toArray()
+  ]);
+  return res.json({
+    activity: sanitizeLogisticsActivity(activity),
+    items: items.map(sanitizeUnifiedLogisticsItem),
+    movements: movements.map(sanitizeLogisticsMovement)
+  });
+});
+
+app.post('/api/logistics/movements', requireLogisticsAccess, async (req, res) => {
+  try { return res.status(201).json(await processMovement(req.account, req.body || {})); }
+  catch (error) { return res.status(error.status || 500).json({ error: error.message || 'Unable to record the stock movement.' }); }
+});
+
+app.get('/api/logistics/reports/inventory.xlsx', requireLogisticsAccess, async (req, res) => {
+  if (!canManageLogistics(req.account, 'viewReports')) return res.status(403).json({ error: 'You do not have permission to view Logistics reports.' });
+  const requestedScope = String(req.query.scope || '');
+  const reportScopes = allowedScopes(req.account);
+  if (requestedScope && !reportScopes.includes(requestedScope)) return res.status(403).json({ error: 'You cannot report on this inventory.' });
+  const data = await buildLogisticsDashboard(req.account, requestedScope);
+  const selectedReportScopes = requestedScope ? [requestedScope] : reportScopes;
+  const reportActivities = await logisticsActivitiesCollection().find({ scope: { $in: selectedReportScopes.filter((id) => id !== 'center') } }).project({ _id: 1 }).toArray();
+  const reportActivityIds = reportActivities.map((entry) => entry._id);
+  const reportMovementQuery = reportActivityIds.length
+    ? { $or: [{ scope: { $in: selectedReportScopes } }, { scope: 'center', activityId: { $in: reportActivityIds } }] }
+    : { scope: { $in: selectedReportScopes } };
+  const movementDocs = await logisticsMovementsCollection().find(reportMovementQuery).sort({ createdAt: -1 }).toArray();
+  const ownerNames = Object.fromEntries(INVENTORY_SCOPES.map((scope) => [scope.id, scope.name]));
+  const inventoryRows = data.items.filter((item) => selectedReportScopes.includes(item.scope)).map((item) => ({
+    Item: item.name, Inventory: ownerNames[item.scope], Type: item.itemType, 'Package Type': item.packageUnit,
+    'Units Per Package': item.unitsPerPackage || '', Available: item.availableQuantity,
+    Borrowed: item.borrowedQuantity, Consumed: item.consumedQuantity, Lost: item.lostQuantity,
+    Damaged: item.damagedQuantity, 'Reorder Point': item.reorderPoint, 'Suggested Quantity': item.suggestedOrder,
+    'Suggested Packages': item.suggestedPackages ?? '', 'Stock Status': item.stockStatus, Unit: item.unit
+  }));
+  const movementRows = movementDocs.map((entry) => ({
+    Date: entry.createdAt, Item: entry.itemName, Inventory: ownerNames[entry.scope], Action: entry.type,
+    Quantity: entry.quantity, Activity: entry.activityName || '', 'Activity Day': entry.activityDate || '',
+    Purpose: entry.purpose || '', Responsible: entry.responsibleUserName, Notes: entry.notes || ''
+  }));
+  const outstandingMap = new Map();
+  for (const entry of movementDocs) {
+    if (!['borrow', 'return', 'loss', 'damage'].includes(entry.type)) continue;
+    const key = `${entry.itemId}:${entry.activityId || 'center'}`;
+    const current = outstandingMap.get(key) || { Item: entry.itemName, Inventory: ownerNames[entry.scope], Activity: entry.activityName || entry.purpose || 'Center borrowing', Borrowed: 0, Returned: 0, Lost: 0, Damaged: 0 };
+    const column = entry.type === 'borrow' ? 'Borrowed' : entry.type === 'return' ? 'Returned' : entry.type === 'loss' ? 'Lost' : 'Damaged';
+    current[column] += Number(entry.quantity);
+    outstandingMap.set(key, current);
+  }
+  const outstandingRows = [...outstandingMap.values()].map((row) => ({ ...row, Outstanding: row.Borrowed - row.Returned - row.Lost - row.Damaged })).filter((row) => row.Outstanding > 0);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(inventoryRows), 'Inventory');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(outstandingRows), 'Outstanding');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(movementRows), 'Movement History');
+  const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', EXCEL_MIME_TYPE);
+  res.setHeader('Content-Disposition', `attachment; filename="logistics-${requestedScope || 'all'}-${formatDateOnly(now())}.xlsx"`);
+  return res.send(output);
 });
 
 app.get('/api/blood-drive/donors', requireBloodDriveAccess, async (req, res) => {
@@ -3592,32 +3751,26 @@ app.get('/api/settings', requireRole('admin'), async (req, res) => {
   res.json({
     botToken: telegram.botToken,
     birthdayChatId: telegram.birthdayChatId,
-    logisticsChatId: telegram.logisticsChatId,
     birthdayMessageTemplate: telegram.birthdayMessageTemplate,
-    logisticsMessageTemplate: telegram.logisticsMessageTemplate,
     timezone: telegram.timezone,
     hasBotToken: Boolean(telegram.botToken)
   });
 });
 
 app.put('/api/settings', requireRole('admin'), async (req, res) => {
-  const { botToken, birthdayChatId, logisticsChatId } = req.body || {};
+  const { botToken, birthdayChatId } = req.body || {};
 
   const updated = await writeTelegramSettings({
     botToken:
       typeof botToken === 'string' ? botToken.trim() : undefined,
     birthdayChatId:
-      typeof birthdayChatId === 'string' ? birthdayChatId.trim() : undefined,
-    logisticsChatId:
-      typeof logisticsChatId === 'string' ? logisticsChatId.trim() : undefined
+      typeof birthdayChatId === 'string' ? birthdayChatId.trim() : undefined
   });
 
   res.json({
     botToken: updated.botToken,
     birthdayChatId: updated.birthdayChatId,
-    logisticsChatId: updated.logisticsChatId,
     birthdayMessageTemplate: updated.birthdayMessageTemplate,
-    logisticsMessageTemplate: updated.logisticsMessageTemplate,
     timezone: updated.timezone,
     hasBotToken: Boolean(updated.botToken)
   });
@@ -3626,15 +3779,6 @@ app.put('/api/settings', requireRole('admin'), async (req, res) => {
 app.post('/api/birthdays/run-now', requireRole('admin'), async (req, res) => {
   try {
     const result = await runBirthdayCheck();
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/logistics/run-now', requireRole('admin'), async (req, res) => {
-  try {
-    const result = await runLogisticsCheck({ force: true });
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });

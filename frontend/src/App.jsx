@@ -20,7 +20,6 @@ import {
   createEmptyBirthday,
   createEmptyDonorStats,
   createEmptyExamResult,
-  createEmptyLogisticsItem,
   createEmptyQueteData,
   createEmptyQueteShift,
   createEmptyPresentationData,
@@ -86,7 +85,6 @@ export default function App() {
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState(createDefaultSettings);
   const [logisticsItems, setLogisticsItems] = useState([]);
-  const [newLogisticsItem, setNewLogisticsItem] = useState(createEmptyLogisticsItem);
   const [newBirthday, setNewBirthday] = useState(createEmptyBirthday);
   const [newUser, setNewUser] = useState(createEmptyUser);
   const [examResults, setExamResults] = useState([]);
@@ -290,7 +288,6 @@ export default function App() {
         setSettings({
           botToken: payloads.settings?.botToken || '',
           birthdayChatId: payloads.settings?.birthdayChatId || '',
-          logisticsChatId: payloads.settings?.logisticsChatId || '',
           timezone: payloads.settings?.timezone || 'Asia/Beirut',
           hasBotToken: Boolean(payloads.settings?.hasBotToken)
         });
@@ -655,15 +652,13 @@ export default function App() {
         method: 'PUT',
         body: {
           botToken: settings.botToken,
-          birthdayChatId: settings.birthdayChatId,
-          logisticsChatId: settings.logisticsChatId
+          birthdayChatId: settings.birthdayChatId
         }
       });
       setSettings((current) => ({
         ...current,
         botToken: payload.botToken || '',
         birthdayChatId: payload.birthdayChatId || '',
-        logisticsChatId: payload.logisticsChatId || '',
         timezone: payload.timezone || current.timezone,
         hasBotToken: Boolean(payload.hasBotToken)
       }));
@@ -678,71 +673,6 @@ export default function App() {
     try {
       const result = await api('/api/birthdays/run-now', { token, method: 'POST' });
       showNotice(formatBirthdayRunMessage(result.matched));
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const refreshLogistics = async () => {
-    const payload = await api('/api/logistics', { token });
-    setLogisticsItems(payload);
-    return payload;
-  };
-
-  const createLogisticsItem = async (payload) => {
-    setError('');
-    try {
-      await api('/api/logistics', {
-        token,
-        method: 'POST',
-        body: payload
-      });
-      setNewLogisticsItem(createEmptyLogisticsItem());
-      await refreshLogistics();
-      showNotice('Logistics item added successfully.');
-      return true;
-    } catch (err) {
-      setError(err.message);
-      return false;
-    }
-  };
-
-  const updateLogisticsItem = async (id, payload) => {
-    try {
-      await api(`/api/logistics/${id}`, { token, method: 'PUT', body: payload });
-      await refreshLogistics();
-      showNotice('Inventory updated successfully.');
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const deleteLogisticsItem = async (id) => {
-    setError('');
-    try {
-      await api(`/api/logistics/${id}`, { token, method: 'DELETE' });
-      setLogisticsItems((current) => current.filter((item) => item.id !== id));
-      showNotice('Logistics item deleted successfully.');
-      return true;
-    } catch (err) {
-      setError(err.message);
-      return false;
-    }
-  };
-
-  const runLogisticsNow = async () => {
-    setError('');
-    try {
-      const result = await api('/api/logistics/run-now', { token, method: 'POST' });
-      if (!result.lowStockItems?.length) {
-        showNotice('Logistics check completed. No items need reordering.');
-        return;
-      }
-      if (result.error) {
-        setError(`Low-stock items were found, but Telegram could not send: ${result.error}`);
-        return;
-      }
-      showNotice(`Logistics reminder sent for ${result.lowStockItems.length} item${result.lowStockItems.length === 1 ? '' : 's'}.`);
     } catch (err) {
       setError(err.message);
     }
@@ -1560,14 +1490,10 @@ export default function App() {
     if (page === pages.logistics && canAccessLogistics) {
       return (
         <LogisticsPage
-          items={logisticsItems}
-          draft={newLogisticsItem}
-          setDraft={setNewLogisticsItem}
-          onCreate={createLogisticsItem}
-          onSave={updateLogisticsItem}
-          onDelete={deleteLogisticsItem}
-          onSendReminder={runLogisticsNow}
-          canSendReminder={isAdmin}
+          token={token}
+          onInventoryChange={setLogisticsItems}
+          onNotice={showNotice}
+          onError={setError}
         />
       );
     }

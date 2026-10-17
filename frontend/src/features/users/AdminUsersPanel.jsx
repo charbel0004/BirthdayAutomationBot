@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { UserRow } from '../../components/common';
-import { createDefaultModuleAccess, moduleAccessKeys, moduleAccessLabels } from '../../lib/state';
+import { createDefaultLogisticsAccess, createDefaultModuleAccess, logisticsPermissionLabels, logisticsScopes, moduleAccessKeys, moduleAccessLabels } from '../../lib/state';
 
 export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSave }) {
   const [overlayOpen, setOverlayOpen] = useState(false);
@@ -11,7 +11,8 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
     setDraft((current) => ({
       ...current,
       role,
-      moduleAccess: createDefaultModuleAccess(role)
+      moduleAccess: createDefaultModuleAccess(role),
+      logisticsAccess: createDefaultLogisticsAccess(role)
     }));
   };
 
@@ -168,6 +169,14 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
                   ))}
                 </div>
               </div>
+              {draft.moduleAccess?.logistics ? <div className="module-access-editor">
+                <span>Logistics permissions and inventories</span>
+                <div className="logistics-access-grid">
+                  <label className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full === true} disabled={draft.role === 'admin'} onChange={(event) => setDraft({ ...draft, logisticsAccess: { ...draft.logisticsAccess, full: event.target.checked } })} />Full Logistics Administration</label>
+                  {Object.entries(logisticsPermissionLabels).map(([key, label]) => <label key={key} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || Boolean(draft.logisticsAccess?.permissions?.[key])} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft({ ...draft, logisticsAccess: { ...draft.logisticsAccess, permissions: { ...draft.logisticsAccess?.permissions, [key]: event.target.checked } } })} />{label}</label>)}
+                  {logisticsScopes.map((scope) => <label key={scope.id} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || draft.logisticsAccess?.scopes?.includes(scope.id)} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft({ ...draft, logisticsAccess: { ...draft.logisticsAccess, scopes: event.target.checked ? [...(draft.logisticsAccess?.scopes || []), scope.id] : (draft.logisticsAccess?.scopes || []).filter((id) => id !== scope.id) } })} />{scope.name}</label>)}
+                </div>
+              </div> : null}
               <label className="switch-row">
                 <div>
                   <strong>Quete focal</strong>

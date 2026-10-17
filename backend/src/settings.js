@@ -6,28 +6,21 @@ const TELEGRAM_SETTINGS_ID = 'telegram';
 const defaultTelegramSettings = {
   botToken: process.env.TELEGRAM_BOT_TOKEN || '',
   birthdayChatId: '',
-  logisticsChatId: '',
   birthdayMessageTemplate:
     'Happy Birthday, {name}! 🎉🎂 Wishing you an amazing day full of joy and celebration! 🥳✨',
-  logisticsMessageTemplate:
-    '📦 Logistics reorder reminder\n\nThe following items are at or below their reorder point:\n{items}\n\nPlease review the logistics inventory.',
   timezone: process.env.BOT_TIMEZONE || 'Asia/Beirut',
-  lastRunDate: '',
-  logisticsLastRunDate: ''
+  lastRunDate: ''
 };
 
 function sanitizeTelegramSettings(doc = {}) {
-  const {
-    _id,
-    createdAt,
-    updatedAt,
-    migratedFrom,
-    ...settings
-  } = doc;
-
   return {
     ...defaultTelegramSettings,
-    ...settings
+    botToken: doc.botToken || '',
+    birthdayChatId: doc.birthdayChatId || '',
+    birthdayMessageTemplate: doc.birthdayMessageTemplate || defaultTelegramSettings.birthdayMessageTemplate,
+    timezone: doc.timezone || defaultTelegramSettings.timezone,
+    lastRunDate: doc.lastRunDate || '',
+    birthdayDeliveryKeys: Array.isArray(doc.birthdayDeliveryKeys) ? doc.birthdayDeliveryKeys : []
   };
 }
 
@@ -42,12 +35,9 @@ async function migrateLegacyTelegramSettings() {
       legacyTelegram.defaultChatId ||
       legacyTelegram.newRecruitsGroupChatId ||
       '',
-    logisticsChatId: legacyTelegram.logisticsChatId || '',
     birthdayMessageTemplate: legacyTelegram.birthdayMessageTemplate,
-    logisticsMessageTemplate: legacyTelegram.logisticsMessageTemplate,
     timezone: legacyTelegram.timezone,
-    lastRunDate: legacyTelegram.lastRunDate,
-    logisticsLastRunDate: legacyTelegram.logisticsLastRunDate
+    lastRunDate: legacyTelegram.lastRunDate
   });
   const timestamp = now();
 
@@ -95,6 +85,7 @@ async function writeTelegramSettings(telegram) {
         ...nextSettings,
         updatedAt: timestamp
       },
+      $unset: { logisticsChatId: '', logisticsMessageTemplate: '', logisticsLastRunDate: '' },
       $setOnInsert: { createdAt: timestamp }
     },
     { upsert: true }

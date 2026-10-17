@@ -14,6 +14,8 @@ const REQUIRED_COLLECTIONS = [
   'users',
   'birthdays',
   'logistics_items',
+  'logistics_activities',
+  'logistics_movements',
   'app_settings',
   'blood_donors',
   'donation_locations',
@@ -48,6 +50,14 @@ function birthdaysCollection() {
 
 function logisticsItemsCollection() {
   return getDb().collection('logistics_items');
+}
+
+function logisticsActivitiesCollection() {
+  return getDb().collection('logistics_activities');
+}
+
+function logisticsMovementsCollection() {
+  return getDb().collection('logistics_movements');
 }
 
 function bloodDonorsCollection() {
@@ -170,13 +180,38 @@ async function ensureIndexes() {
     await presentationEvaluationsCollection().dropIndex(legacyIndex.name);
   }
 
+  const logisticsIndexes = await logisticsItemsCollection().indexes();
+  const legacyNameIndex = logisticsIndexes.find(
+    (index) => index.unique === true && index.key?.normalizedName === 1 && !index.key?.scope
+  );
+  if (legacyNameIndex) await logisticsItemsCollection().dropIndex(legacyNameIndex.name);
+
+  await logisticsItemsCollection().updateMany(
+    { scope: { $exists: false } },
+    {
+      $set: {
+        scope: 'center',
+        itemType: 'reusable',
+        borrowedQuantity: 0,
+        consumedQuantity: 0,
+        lostQuantity: 0,
+        damagedQuantity: 0
+      }
+    }
+  );
+
   await Promise.all([
     usersCollection().createIndex({ username: 1 }, { unique: true }),
     birthdaysCollection().createIndex({ normalizedName: 1, birthdate: 1 }, { unique: true }),
     birthdaysCollection().createIndex({ userId: 1 }),
-    logisticsItemsCollection().createIndex({ normalizedName: 1 }, { unique: true }),
+    logisticsItemsCollection().createIndex({ scope: 1, normalizedName: 1 }, { unique: true }),
     logisticsItemsCollection().createIndex({ category: 1, name: 1 }),
     logisticsItemsCollection().createIndex({ active: 1, quantity: 1, reorderPoint: 1 }),
+    logisticsActivitiesCollection().createIndex({ scope: 1, startDate: -1 }),
+    logisticsActivitiesCollection().createIndex({ scope: 1, normalizedName: 1, startDate: 1 }, { unique: true }),
+    logisticsMovementsCollection().createIndex({ scope: 1, createdAt: -1 }),
+    logisticsMovementsCollection().createIndex({ itemId: 1, activityId: 1, activityDate: 1, createdAt: 1 }),
+    logisticsMovementsCollection().createIndex({ idempotencyKey: 1 }, { unique: true, sparse: true }),
     bloodDonorsCollection().createIndex({ userId: 1 }),
     bloodDonorsCollection().createIndex({ normalizedFullName: 1 }),
     bloodDonorsCollection().createIndex({ normalizedPhoneNumber: 1 }),
@@ -326,6 +361,8 @@ module.exports = {
   examResultsCollection,
   getDb,
   logisticsItemsCollection,
+  logisticsActivitiesCollection,
+  logisticsMovementsCollection,
   normalizeName,
   now,
   queteReservationsCollection,

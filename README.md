@@ -107,11 +107,11 @@ If you also want the default GitHub Pages domain to work during setup, add it to
 
 - The birthday check already reads active birthdays from MongoDB.
 - Telegram settings and the `lastRunDate` guard are now stored in MongoDB as well.
-- The same bot token can use separate `birthdayChatId` and `logisticsChatId` destinations.
+- Telegram is used only for birthday messages; Logistics alerts and reports stay inside the website.
 - Logistics inventory is stored in MongoDB and items at or below their reorder point are shown on the website.
-- Inventory supports a base unit plus optional packaging (for example, pieces with 24 pieces per box), including mixed stock such as full boxes plus loose pieces.
-- The Add Item workflow opens in a responsive overlay, while mobile inventory records switch from a wide table to editable cards.
-- Logistics is always enabled for admins. Admins can grant or remove Logistics Inventory access for each member or recruit from Users & Roles.
-- The scheduler sends one consolidated logistics reorder reminder per day when low-stock items exist. Admins can also send it immediately from the Logistics page.
-- The birthday and logistics scheduler still runs in the backend process, not inside MongoDB itself.
+- One movement ledger serves Center Logistics and the HVP, Youth and Health, and Environment inventories while keeping their quantities, activities, pages, and permissions separate.
+- An activity can use its own program stock and shared Center stock; every movement still updates and reports against the item’s original inventory owner.
+- Reusable and consumable stock supports borrowing, partial returns, consumption, loss, damage, restocking, and audited adjustments.
+- Admins assign Logistics actions and inventory scopes to each member from Users & Roles.
+- The birthday scheduler runs in the backend process; Logistics monitoring and Excel reports are generated on demand in the website.
 - If Fly scales to zero, a midnight timer cannot fire, so `min_machines_running = 1` is required.

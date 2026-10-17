@@ -35,6 +35,22 @@ export const moduleAccessLabels = {
   certificateGenerator: 'Certificate Generator'
 };
 
+export const logisticsScopes = [
+  { id: 'center', name: 'Center Logistics' },
+  { id: 'program-1', name: 'HVP' },
+  { id: 'program-2', name: 'Youth and Health' },
+  { id: 'program-3', name: 'Environment' }
+];
+export const logisticsPermissionLabels = {
+  view: 'View Logistics', manageInventory: 'Manage Inventory',
+  manageActivities: 'Manage Activities', recordMovements: 'Record Withdrawals and Returns',
+  viewReports: 'View and Export Reports'
+};
+export function createDefaultLogisticsAccess(role = 'member') {
+  const enabled = role === 'admin';
+  return { full: enabled, scopes: enabled ? logisticsScopes.map(({ id }) => id) : [], permissions: Object.fromEntries(Object.keys(logisticsPermissionLabels).map((key) => [key, enabled])) };
+}
+
 const routeToPage = {
   '': pages.home,
   home: pages.home,
@@ -83,29 +99,8 @@ export function createDefaultSettings() {
   return {
     botToken: '',
     birthdayChatId: '',
-    logisticsChatId: '',
     timezone: 'Asia/Beirut',
     hasBotToken: false
-  };
-}
-
-export function createEmptyLogisticsItem() {
-  return {
-    name: '',
-    category: 'daily-use',
-    quantity: 0,
-    unit: 'units',
-    reorderPoint: 0,
-    usesPackages: false,
-    packageUnit: '',
-    unitsPerPackage: '',
-    packageQuantity: 0,
-    looseQuantity: 0,
-    reorderPackageQuantity: 0,
-    reorderLooseQuantity: 0,
-    location: '',
-    notes: '',
-    active: true
   };
 }
 
@@ -152,6 +147,7 @@ export function createEmptyUser() {
     role: 'member',
     active: true,
     moduleAccess: createDefaultModuleAccess('member'),
+    logisticsAccess: createDefaultLogisticsAccess('member'),
     isQueteFocal: false
   };
 }

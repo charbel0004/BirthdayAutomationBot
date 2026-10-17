@@ -12,6 +12,9 @@ import {
 } from '../lib/app';
 import {
   createDefaultModuleAccess,
+  createDefaultLogisticsAccess,
+  logisticsPermissionLabels,
+  logisticsScopes,
   moduleAccessKeys,
   moduleAccessLabels
 } from '../lib/state';
@@ -890,6 +893,7 @@ export function UserRow({ user, onSave }) {
     displayName: user.displayName,
     role: user.role,
     moduleAccess: user.moduleAccess || createDefaultModuleAccess(user.role),
+    logisticsAccess: user.logisticsAccess || createDefaultLogisticsAccess(user.role),
     active: user.active,
     isQueteFocal: user.isQueteFocal === true,
     password: ''
@@ -904,6 +908,7 @@ export function UserRow({ user, onSave }) {
       displayName: user.displayName,
       role: user.role,
       moduleAccess: user.moduleAccess || createDefaultModuleAccess(user.role),
+      logisticsAccess: user.logisticsAccess || createDefaultLogisticsAccess(user.role),
       active: user.active,
       isQueteFocal: user.isQueteFocal === true,
       password: ''
@@ -961,7 +966,8 @@ export function UserRow({ user, onSave }) {
                     onChange={(event) => setDraft({
                       ...draft,
                       role: event.target.value,
-                      moduleAccess: createDefaultModuleAccess(event.target.value)
+                      moduleAccess: createDefaultModuleAccess(event.target.value),
+                      logisticsAccess: createDefaultLogisticsAccess(event.target.value)
                     })}
                   >
                     <option value="admin">Admin</option>
@@ -974,6 +980,14 @@ export function UserRow({ user, onSave }) {
                   <input type="password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} placeholder="Leave blank" />
                 </label>
               </div>
+              {draft.moduleAccess?.logistics ? <div className="user-access-block">
+                <div className="user-access-head"><strong>Logistics access</strong><span>Assign actions and inventory ownership separately.</span></div>
+                <div className="logistics-access-grid">
+                  <label className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full === true} disabled={draft.role === 'admin'} onChange={(event) => setDraft((current) => ({ ...current, logisticsAccess: { ...current.logisticsAccess, full: event.target.checked } }))} />Full Logistics Administration</label>
+                  {Object.entries(logisticsPermissionLabels).map(([key, label]) => <label key={key} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || Boolean(draft.logisticsAccess?.permissions?.[key])} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft((current) => ({ ...current, logisticsAccess: { ...current.logisticsAccess, permissions: { ...current.logisticsAccess?.permissions, [key]: event.target.checked } } }))} />{label}</label>)}
+                  {logisticsScopes.map((scope) => <label key={scope.id} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || draft.logisticsAccess?.scopes?.includes(scope.id)} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft((current) => ({ ...current, logisticsAccess: { ...current.logisticsAccess, scopes: event.target.checked ? [...(current.logisticsAccess?.scopes || []), scope.id] : (current.logisticsAccess?.scopes || []).filter((id) => id !== scope.id) } }))} />{scope.name}</label>)}
+                </div>
+              </div> : null}
               <div className="user-access-block">
                 <div className="user-access-head">
                   <strong>Section access</strong>

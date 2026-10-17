@@ -283,7 +283,7 @@ export default function HomePage(props) {
             <div className="module-grid blood-drive-module-grid admin-tools-module-grid">
               <ModuleCard
                 title="Logistics Inventory"
-                description="Track stock, set reorder points, and manage website and Telegram low-stock reminders."
+                description="Track stock movements, program activities, outstanding items, and reorder reports."
                 icon={<div className="module-icon-text">📦</div>}
                 onClick={onOpenLogistics}
               />
