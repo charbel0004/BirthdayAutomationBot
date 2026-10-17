@@ -3579,12 +3579,28 @@ th {
 .quiet-button { border-color: transparent !important; background: transparent !important; color: #5e6d76 !important; box-shadow: none !important; }
 .quiet-button:hover { background: #f0f3f4 !important; color: #283840 !important; }
 .logistics-action-modal { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 40px); display: grid; gap: 16px; overflow: auto; }
-.logistics-create-item-modal { width: min(820px, calc(100vw - 32px)); }
+.logistics-create-item-modal { width: min(760px, calc(100vw - 32px)); padding: 0; gap: 0; overflow: auto; }
+.logistics-create-item-modal > .modal-head { position: sticky; top: 0; z-index: 2; align-items: flex-start; margin: 0; padding: 20px 24px 16px; border-bottom: 1px solid #e2e7ea; background: rgba(255, 255, 255, .97); backdrop-filter: blur(12px); }
+.logistics-create-item-modal > .modal-head p { max-width: 520px; margin: 6px 0 0; color: #687780; }
+.logistics-create-item-modal > .logistics-form-section { margin: 18px 24px 0; }
+.logistics-create-item-modal > .logistics-modal-actions { position: sticky; bottom: 0; z-index: 2; margin-top: 20px; padding: 15px 24px 18px; border-top: 1px solid #e2e7ea; background: rgba(255, 255, 255, .97); backdrop-filter: blur(12px); }
 .logistics-action-modal label { display: grid; gap: 7px; color: #35464f; font-weight: 650; }
 .logistics-action-modal label small { color: #6a7880; font-weight: 400; }
 .logistics-dialog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .logistics-action-modal .logistics-form-section { padding: 16px; border: 1px solid #e3e8ea; border-radius: 14px; background: #fafbfb; }
 .logistics-action-modal .logistics-form-section h3 { margin: 0 0 14px; }
+.logistics-package-section-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.logistics-package-section-head h3 { margin-bottom: 4px !important; }
+.logistics-package-section-head p { margin: 0; color: #6a7880; font-size: .84rem; font-weight: 400; }
+.logistics-package-toggle { flex: 0 0 auto; min-width: 138px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 9px; padding: 8px 11px; color: #53636d; border: 1px solid #d4dce1; border-radius: 999px; background: #eef2f4; box-shadow: none; }
+.logistics-package-toggle:hover:not(:disabled) { color: #35464f; border-color: #bdc8ce; background: #e8edef; box-shadow: none; transform: none; }
+.logistics-package-toggle > span { position: relative; width: 34px; height: 20px; flex: 0 0 34px; border-radius: 999px; background: #aeb9bf; transition: background 160ms ease; }
+.logistics-package-toggle > span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(18, 35, 45, .3); transition: transform 160ms ease; }
+.logistics-package-toggle.is-active { color: #8e1920; border-color: #e4b9bc; background: #fbecee; }
+.logistics-package-toggle.is-active > span { background: #b12028; }
+.logistics-package-toggle.is-active > span::after { transform: translateX(14px); }
+.logistics-opening-quantity { max-width: 340px; }
+.logistics-opening-quantity small { color: #6a7880; font-weight: 400; }
 .logistics-modal-actions { display: flex; justify-content: flex-end; gap: 9px; padding-top: 4px; }
 .program-logistics-head { margin-bottom: 0; }
 .program-section-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -3620,6 +3636,12 @@ th {
   .program-section-switcher > button { grid-template-columns: auto 1fr; }
   .program-section-switcher > button em { grid-column: 2; }
   .activity-movement-editor-head { display: grid; }
+  .logistics-create-item-modal { width: min(100%, calc(100vw - 18px)); max-height: calc(100dvh - 18px); }
+  .logistics-create-item-modal > .modal-head { padding: 16px; }
+  .logistics-create-item-modal > .logistics-form-section { margin: 14px 14px 0; padding: 14px; }
+  .logistics-create-item-modal > .logistics-modal-actions { padding: 13px 14px; }
+  .logistics-package-section-head { align-items: stretch; flex-direction: column; }
+  .logistics-package-toggle { width: 100%; justify-content: space-between; }
   .program-workspace-cards article { grid-template-columns: auto 1fr; }
   .program-workspace-cards article > strong { grid-column: 2; }
   .logistics-dashboard-metrics { grid-template-columns: 1fr; }
