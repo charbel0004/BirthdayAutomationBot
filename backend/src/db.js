@@ -1,14 +1,78 @@
 const { MongoClient, ObjectId } = require('mongodb');
+const dns = require('node:dns').promises;
 const { readStore } = require('./store');
 
 const MONGO_URI =
   process.env.MONGO_URI ||
-  process.env.DATABASE_URL ||
-  'mongodb+srv://jbeilyouth:Jbei%3B.Youth%40205@lrcy-jbeil.9ot10nr.mongodb.net/?appName=LRCY-JBEIL';
+  process.env.DATABASE_URL;
 const DATABASE_NAME = process.env.MONGO_DB_NAME || 'Central_Website';
 
 let client;
 let database;
+
+function within(promise, milliseconds, message) {
+  let timeout;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(message)), milliseconds); })
+  ]).finally(() => clearTimeout(timeout));
+}
+
+async function dnsOverHttps(name, type) {
+  const response = await within(fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`, {
+    headers: { accept: 'application/dns-json' }
+  }), 5000, `DNS-over-HTTPS ${type} lookup timed out`);
+  if (!response.ok) throw new Error(`DNS-over-HTTPS ${type} lookup failed with status ${response.status}`);
+  const payload = await response.json();
+  if (payload.Status !== 0) throw new Error(`DNS-over-HTTPS ${type} lookup failed with status ${payload.Status}`);
+  return payload.Answer || [];
+}
+
+async function resolveSrvRecords(hostname) {
+  try {
+    return await within(dns.resolveSrv(`_mongodb._tcp.${hostname}`), 3000, 'MongoDB SRV lookup timed out');
+  } catch {
+    const answers = await dnsOverHttps(`_mongodb._tcp.${hostname}`, 'SRV');
+    return answers.map(({ data }) => {
+      const [, , port, name] = String(data || '').trim().split(/\s+/);
+      return { name: String(name || '').replace(/\.$/, ''), port: Number(port) };
+    }).filter((entry) => entry.name && Number.isFinite(entry.port));
+  }
+}
+
+async function resolveTxtOptions(hostname) {
+  try {
+    const records = await within(dns.resolveTxt(hostname), 3000, 'MongoDB TXT lookup timed out');
+    return records.map((segments) => segments.join('')).join('&');
+  } catch {
+    const answers = await dnsOverHttps(hostname, 'TXT');
+    return answers.map(({ data }) => String(data || '').replace(/^"|"$/g, '').replace(/"\s+"/g, '')).join('&');
+  }
+}
+
+async function resolveMongoConnectionString(uri) {
+  if (!String(uri).startsWith('mongodb+srv://')) return uri;
+  const parsed = new URL(uri);
+  const [records, txtOptions] = await Promise.all([
+    resolveSrvRecords(parsed.hostname),
+    resolveTxtOptions(parsed.hostname)
+  ]);
+  if (!records.length) throw new Error(`No MongoDB hosts were found for ${parsed.hostname}`);
+
+  const options = new URLSearchParams(parsed.searchParams);
+  for (const [key, value] of new URLSearchParams(txtOptions)) {
+    if (!options.has(key)) options.set(key, value);
+  }
+  options.set('tls', 'true');
+  if (!options.has('retryWrites')) options.set('retryWrites', 'true');
+  if (!options.has('w')) options.set('w', 'majority');
+
+  const credentials = parsed.username
+    ? `${parsed.username}${parsed.password ? `:${parsed.password}` : ''}@`
+    : '';
+  const hosts = records.map(({ name, port }) => `${name}:${port}`).join(',');
+  return `mongodb://${credentials}${hosts}${parsed.pathname || '/'}?${options.toString()}`;
+}
 
 const REQUIRED_COLLECTIONS = [
   'users',
@@ -326,8 +390,26 @@ async function connectToDatabase() {
     return database;
   }
 
-  client = new MongoClient(MONGO_URI);
-  await client.connect();
+  if (!MONGO_URI) {
+    throw new Error('MongoDB is not configured. Set MONGO_URI in backend/.env or in the server environment.');
+  }
+
+  const connectionString = await resolveMongoConnectionString(MONGO_URI);
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      client = new MongoClient(connectionString, { serverSelectionTimeoutMS: 15000, connectTimeoutMS: 10000 });
+      await client.connect();
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      await client?.close().catch(() => {});
+      client = undefined;
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
+  if (lastError) throw lastError;
   database = client.db(DATABASE_NAME);
 
   await ensureCollections();

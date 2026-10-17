@@ -5,9 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "init:mongo": "node src/init-mongo.js"
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "init:mongo": "node --env-file-if-exists=.env src/init-mongo.js"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
