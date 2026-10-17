@@ -28,6 +28,12 @@ test('Logistics permissions are scoped and admins always receive full access', (
   assert.equal(can(member, 'recordMovements', 'program-1'), false);
   assert.equal(createDefaultLogisticsAccess('member', false).scopes.length, 0);
   assert.equal(normalizeLogisticsAccess('admin', true, {}).full, true);
+  const operationalAccess = normalizeLogisticsAccess('member', true, {
+    scopes: ['program-2'],
+    permissions: { view: false, manageInventory: true, manageActivities: false, recordMovements: false, viewReports: false }
+  });
+  assert.equal(operationalAccess.permissions.view, true);
+  assert.equal(operationalAccess.permissions.manageInventory, true);
 });
 
 test('All stock actions use one consistent balance calculation', () => {

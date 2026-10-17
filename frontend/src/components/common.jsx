@@ -871,6 +871,20 @@ export function BirthdayRow({ entry, onSave, onDelete }) {
     }
   };
 
+  const toggleLogisticsPermission = (key, checked) => {
+    setDraft((current) => ({
+      ...current,
+      logisticsAccess: {
+        ...current.logisticsAccess,
+        permissions: {
+          ...current.logisticsAccess?.permissions,
+          [key]: checked,
+          ...(key !== 'view' && checked ? { view: true } : {})
+        }
+      }
+    }));
+  };
+
   return (
     <tr>
       <td><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></td>
@@ -980,11 +994,12 @@ export function UserRow({ user, onSave }) {
                   <input type="password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} placeholder="Leave blank" />
                 </label>
               </div>
-              {draft.moduleAccess?.logistics ? <div className="user-access-block">
+              {draft.moduleAccess?.logistics ? <div className="user-access-block logistics-permission-editor">
                 <div className="user-access-head"><strong>Logistics access</strong><span>Assign actions and inventory ownership separately.</span></div>
+                <p className="permission-helper">Choose actions and at least one inventory. View Logistics stays enabled whenever an operational permission is selected.</p>
                 <div className="logistics-access-grid">
                   <label className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full === true} disabled={draft.role === 'admin'} onChange={(event) => setDraft((current) => ({ ...current, logisticsAccess: { ...current.logisticsAccess, full: event.target.checked } }))} />Full Logistics Administration</label>
-                  {Object.entries(logisticsPermissionLabels).map(([key, label]) => <label key={key} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || Boolean(draft.logisticsAccess?.permissions?.[key])} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft((current) => ({ ...current, logisticsAccess: { ...current.logisticsAccess, permissions: { ...current.logisticsAccess?.permissions, [key]: event.target.checked } } }))} />{label}</label>)}
+                  {Object.entries(logisticsPermissionLabels).map(([key, label]) => <label key={key} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || Boolean(draft.logisticsAccess?.permissions?.[key])} disabled={draft.role === 'admin' || draft.logisticsAccess?.full || (key === 'view' && Object.entries(draft.logisticsAccess?.permissions || {}).some(([permission, enabled]) => permission !== 'view' && enabled))} onChange={(event) => toggleLogisticsPermission(key, event.target.checked)} />{label}</label>)}
                   {logisticsScopes.map((scope) => <label key={scope.id} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || draft.logisticsAccess?.scopes?.includes(scope.id)} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft((current) => ({ ...current, logisticsAccess: { ...current.logisticsAccess, scopes: event.target.checked ? [...(current.logisticsAccess?.scopes || []), scope.id] : (current.logisticsAccess?.scopes || []).filter((id) => id !== scope.id) } }))} />{scope.name}</label>)}
                 </div>
               </div> : null}
@@ -1014,7 +1029,13 @@ export function UserRow({ user, onSave }) {
                             moduleAccess: {
                               ...current.moduleAccess,
                               [key]: event.target.checked
-                            }
+                            },
+                            ...(key === 'logistics' && event.target.checked ? {
+                              logisticsAccess: {
+                                ...current.logisticsAccess,
+                                permissions: { ...current.logisticsAccess?.permissions, view: true }
+                              }
+                            } : {})
                           }))}
                         />
                         <span className="switch-slider" />

@@ -33,6 +33,9 @@ function normalizeLogisticsAccess(role, moduleEnabled, access = {}) {
   const full = access?.full === true;
   const scopes = [...new Set((Array.isArray(access?.scopes) ? access.scopes : defaults.scopes).filter((scope) => SCOPE_IDS.has(scope)))];
   const permissions = Object.fromEntries(PERMISSIONS.map((key) => [key, full || (typeof access?.permissions?.[key] === 'boolean' ? access.permissions[key] : defaults.permissions[key])]));
+  // Any operational permission necessarily needs read access to the same workspace.
+  // This prevents accounts that can technically mutate stock but cannot load the page.
+  if (PERMISSIONS.some((key) => key !== 'view' && permissions[key])) permissions.view = true;
   return { full, scopes: full ? INVENTORY_SCOPES.map(({ id }) => id) : scopes, permissions };
 }
 

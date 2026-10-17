@@ -26,6 +26,26 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
       moduleAccess: {
         ...current.moduleAccess,
         [key]: checked
+      },
+      ...(key === 'logistics' && checked ? {
+        logisticsAccess: {
+          ...current.logisticsAccess,
+          permissions: { ...current.logisticsAccess?.permissions, view: true }
+        }
+      } : {})
+    }));
+  };
+
+  const toggleLogisticsPermission = (key, checked) => {
+    setDraft((current) => ({
+      ...current,
+      logisticsAccess: {
+        ...current.logisticsAccess,
+        permissions: {
+          ...current.logisticsAccess?.permissions,
+          [key]: checked,
+          ...(key !== 'view' && checked ? { view: true } : {})
+        }
       }
     }));
   };
@@ -169,11 +189,12 @@ export default function AdminUsersPanel({ users, draft, setDraft, onCreate, onSa
                   ))}
                 </div>
               </div>
-              {draft.moduleAccess?.logistics ? <div className="module-access-editor">
+              {draft.moduleAccess?.logistics ? <div className="module-access-editor logistics-permission-editor">
                 <span>Logistics permissions and inventories</span>
+                <p className="permission-helper">Choose what this user can do, then select the Center or programs where those actions apply.</p>
                 <div className="logistics-access-grid">
                   <label className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full === true} disabled={draft.role === 'admin'} onChange={(event) => setDraft({ ...draft, logisticsAccess: { ...draft.logisticsAccess, full: event.target.checked } })} />Full Logistics Administration</label>
-                  {Object.entries(logisticsPermissionLabels).map(([key, label]) => <label key={key} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || Boolean(draft.logisticsAccess?.permissions?.[key])} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft({ ...draft, logisticsAccess: { ...draft.logisticsAccess, permissions: { ...draft.logisticsAccess?.permissions, [key]: event.target.checked } } })} />{label}</label>)}
+                  {Object.entries(logisticsPermissionLabels).map(([key, label]) => <label key={key} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || Boolean(draft.logisticsAccess?.permissions?.[key])} disabled={draft.role === 'admin' || draft.logisticsAccess?.full || (key === 'view' && Object.entries(draft.logisticsAccess?.permissions || {}).some(([permission, enabled]) => permission !== 'view' && enabled))} onChange={(event) => toggleLogisticsPermission(key, event.target.checked)} />{label}</label>)}
                   {logisticsScopes.map((scope) => <label key={scope.id} className="inline-checkbox"><input type="checkbox" checked={draft.role === 'admin' || draft.logisticsAccess?.full || draft.logisticsAccess?.scopes?.includes(scope.id)} disabled={draft.role === 'admin' || draft.logisticsAccess?.full} onChange={(event) => setDraft({ ...draft, logisticsAccess: { ...draft.logisticsAccess, scopes: event.target.checked ? [...(draft.logisticsAccess?.scopes || []), scope.id] : (draft.logisticsAccess?.scopes || []).filter((id) => id !== scope.id) } })} />{scope.name}</label>)}
                 </div>
               </div> : null}

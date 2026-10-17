@@ -3523,6 +3523,11 @@ th {
 .logistics-hub td strong { display: block; }
 .logistics-hub td small { display: block; color: #687680; margin-top: 3px; }
 .logistics-access-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; padding: 12px 0; }
+.logistics-permission-editor .permission-helper { margin: 6px 0 2px; color: #687780; font-size: .84rem; line-height: 1.45; }
+.logistics-access-grid .inline-checkbox { min-height: 46px; display: grid; align-items: center; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border: 1px solid #dfe5e8; border-radius: 11px; background: #f8fafb; color: #3f5059; cursor: pointer; }
+.logistics-access-grid .inline-checkbox:has(input:checked) { border-color: #dfb5b8; background: #fff5f5; color: #821a20; }
+.logistics-access-grid .inline-checkbox:has(input:disabled) { cursor: default; opacity: .72; }
+.logistics-access-grid .inline-checkbox input[type="checkbox"] { appearance: auto; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; border: initial; border-radius: 3px; background: initial; box-shadow: none; backdrop-filter: none; accent-color: #b12028; }
 .logistics-report-actions { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
 .logistics-report-actions label { display: grid; gap: 6px; min-width: 220px; }
 .logistics-dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
