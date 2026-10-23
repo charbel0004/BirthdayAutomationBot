@@ -10,7 +10,7 @@ const defaultStore = {
     passwordHash: ''
   },
   telegram: {
-    botToken: '6301045712:AAH1d6UMvi3svtE-_F6fYe-edugM4XnpBsY',
+    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
     membersGroupChatId: '-1001385895626',
     newRecruitsGroupChatId: '',
     birthdayMessageTemplate:

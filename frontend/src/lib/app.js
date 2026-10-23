@@ -173,15 +173,19 @@ export async function api(path, { token, method = 'GET', body } = {}) {
   return response.json();
 }
 
-export async function downloadFile(path, { token, filename = 'download' } = {}) {
-  const headers = {};
+export async function downloadFile(path, { token, filename = 'download', method = 'GET', body } = {}) {
+  const headers = body ? { 'Content-Type': 'application/json' } : {};
   const requestUrl = resolveApiUrl(path);
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(requestUrl, { headers });
+  const response = await fetch(requestUrl, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined
+  });
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));

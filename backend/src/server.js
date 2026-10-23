@@ -2235,6 +2235,75 @@ app.post('/api/logistics/movements', requireLogisticsAccess, async (req, res) =>
   catch (error) { return res.status(error.status || 500).json({ error: error.message || 'Unable to record the stock movement.' }); }
 });
 
+app.post('/api/logistics/orders/export.xlsx', requireLogisticsAccess, async (req, res) => {
+  const requestedItems = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!requestedItems.length) return res.status(400).json({ error: 'Select at least one low-stock item for the order.' });
+  if (requestedItems.length > 500) return res.status(400).json({ error: 'An order can contain up to 500 items.' });
+
+  const normalizedItems = [];
+  const seenIds = new Set();
+  for (const entry of requestedItems) {
+    const itemId = toObjectId(entry?.itemId);
+    const quantity = Number(entry?.quantity);
+    if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
+      return res.status(400).json({ error: 'Every selected item needs a quantity greater than zero.' });
+    }
+    const key = String(itemId);
+    if (seenIds.has(key)) return res.status(400).json({ error: 'The same item cannot appear twice in one order.' });
+    seenIds.add(key);
+    normalizedItems.push({ itemId, quantity });
+  }
+
+  const documents = await logisticsItemsCollection().find({
+    _id: { $in: normalizedItems.map((entry) => entry.itemId) },
+    active: { $ne: false }
+  }).toArray();
+  const documentsById = new Map(documents.map((item) => [String(item._id), item]));
+  const ownerNames = Object.fromEntries(INVENTORY_SCOPES.map((scope) => [scope.id, scope.name]));
+  const orderRows = [];
+
+  for (const requestItem of normalizedItems) {
+    const document = documentsById.get(String(requestItem.itemId));
+    if (!document) return res.status(404).json({ error: 'One of the selected inventory items could not be found.' });
+    const item = sanitizeUnifiedLogisticsItem(document);
+    if (!canManageLogistics(req.account, 'manageInventory', item.scope)) {
+      return res.status(403).json({ error: `You cannot create an order for ${ownerNames[item.scope] || 'this inventory'}.` });
+    }
+    if (!item.isLowStock) {
+      return res.status(409).json({ error: `${item.name} is no longer low in stock. Refresh the order page and try again.` });
+    }
+    orderRows.push({
+      Item: item.name,
+      Inventory: ownerNames[item.scope] || item.scope,
+      Category: item.category,
+      Available: item.availableQuantity,
+      Borrowed: item.borrowedQuantity,
+      'Reorder Point': item.reorderPoint,
+      'Target Stock': item.targetStock ?? '',
+      'Order Quantity': requestItem.quantity,
+      Unit: item.unit,
+      'Package Type': item.packageUnit || '',
+      'Units Per Package': item.unitsPerPackage || '',
+      'Packages To Order': item.unitsPerPackage ? Math.ceil(requestItem.quantity / item.unitsPerPackage) : '',
+      Location: item.location || '',
+      Notes: item.notes || ''
+    });
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(orderRows);
+  worksheet['!cols'] = [
+    { wch: 28 }, { wch: 22 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 14 },
+    { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 32 }
+  ];
+  worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock Order');
+  const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', EXCEL_MIME_TYPE);
+  res.setHeader('Content-Disposition', `attachment; filename="logistics-order-${formatDateOnly(now())}.xlsx"`);
+  return res.send(output);
+});
+
 app.get('/api/logistics/reports/inventory.xlsx', requireLogisticsAccess, async (req, res) => {
   if (!canManageLogistics(req.account, 'viewReports')) return res.status(403).json({ error: 'You do not have permission to view Logistics reports.' });
   const requestedScope = String(req.query.scope || '');

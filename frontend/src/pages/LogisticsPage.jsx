@@ -2,13 +2,50 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, downloadFile } from '../lib/app';
 
-const tabs = [['overview', 'Overview'], ['center', 'Center Logistics'], ['programs', 'Program Logistics'], ['activities', 'Activities'], ['history', 'Movement History'], ['reports', 'Reports']];
+const tabs = [['overview', 'Overview'], ['center', 'Center Logistics'], ['programs', 'Program Logistics'], ['low-stock', 'Low Stock'], ['orders', 'Order'], ['activities', 'Activities'], ['history', 'Movement History'], ['reports', 'Reports']];
 const activityActions = { borrow: 'Take Items', return: 'Return Items', consume: 'Record Consumption', loss: 'Record Loss', damage: 'Record Damage' };
 const emptyItem = (scope = 'center') => ({ name: '', category: 'daily-use', scope, itemType: 'reusable', quantity: 0, unit: 'units', reorderPoint: 0, targetStock: '', location: '', notes: '', usesPackages: false, packageUnit: '', unitsPerPackage: '', packageQuantity: 0, looseQuantity: 0 });
 const emptyActivity = (scope = 'program-1') => ({ name: '', scope, description: '', startDate: '', endDate: '', responsiblePerson: '' });
 const emptyMovement = () => ({ type: 'borrow', itemId: '', quantity: 1, quantityMode: 'unit', activityId: '', activityDate: '', notes: '', idempotencyKey: crypto.randomUUID() });
 const scopeName = (scopes, id) => scopes.find((entry) => entry.id === id)?.name || id;
 const formatted = (value) => Number.isInteger(Number(value)) ? Number(value) : Number(value).toFixed(2);
+
+function ItemSearchPicker({ items, value, onChange }) {
+  const selected = items.find((entry) => entry.id === value);
+  const [query, setQuery] = useState(selected?.name || '');
+
+  useEffect(() => {
+    setQuery(selected?.name || '');
+  }, [value, selected?.name]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const matches = normalizedQuery && !selected
+    ? items.filter((entry) => `${entry.name} ${entry.category} ${entry.location || ''}`.toLowerCase().includes(normalizedQuery)).slice(0, 12)
+    : [];
+
+  return <div className="inventory-search-picker">
+    <label>
+      Search item
+      <input
+        type="search"
+        value={query}
+        placeholder="Type an item name, category, or location"
+        autoFocus
+        onChange={(event) => {
+          setQuery(event.target.value);
+          if (value) onChange('');
+        }}
+      />
+    </label>
+    {selected ? <div className="inventory-search-selection"><div><strong>{selected.name}</strong><span>{selected.availableQuantity} {selected.unit} available</span></div><button type="button" className="quiet-button" onClick={() => { onChange(''); setQuery(''); }}>Change</button></div> : null}
+    {!selected && normalizedQuery ? <div className="inventory-search-results" role="listbox" aria-label="Matching inventory items">
+      {matches.length ? matches.map((entry) => <button type="button" role="option" key={entry.id} onClick={() => { onChange(entry.id); setQuery(entry.name); }}>
+        <span><strong>{entry.name}</strong><small>{entry.category}{entry.location ? ` · ${entry.location}` : ''}</small></span>
+        <em>{entry.availableQuantity} {entry.unit} available</em>
+      </button>) : <p>No matching inventory items.</p>}
+    </div> : null}
+  </div>;
+}
 
 function activityDays(activity, movements) {
   if (!activity) return [];
@@ -116,11 +153,11 @@ function InventoryPage({ title, explanation, selectedScope, scopes, items, canMa
 
     {dialog === 'stock' ? createPortal(<div className="modal-backdrop modal-backdrop-top" onClick={closeDialog}><form className="modal-card logistics-action-modal" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); onStock(stock, closeDialog); }}>
       <div className="modal-head"><div><span className="panel-kicker">Inventory setup</span><h2>{stock.type === 'restock' ? 'Restock an item' : 'Adjust inventory count'}</h2><p>{stock.type === 'restock' ? 'Record newly received stock. This does not withdraw any items.' : 'Correct the recorded balance and provide a reason.'}</p></div><button type="button" className="secondary" onClick={closeDialog}>Close</button></div>
-      <label>Item<select value={stock.itemId} onChange={(event) => setStock({ ...stock, itemId: event.target.value, quantityMode: 'unit' })} required><option value="">Choose item</option>{visible.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.availableQuantity} {entry.unit} available</option>)}</select></label>
+      <ItemSearchPicker items={visible} value={stock.itemId} onChange={(itemId) => setStock({ ...stock, itemId, quantityMode: 'unit' })} />
       {selectedStockItem?.unitsPerPackage ? <label>Add stock as<select value={stock.quantityMode} onChange={(event) => setStock({ ...stock, quantityMode: event.target.value })}><option value="unit">Individual {selectedStockItem.unit}</option><option value="package">Full {selectedStockItem.packageUnit}</option></select></label> : null}
       <label>{stock.type === 'adjustment' ? 'Quantity change' : 'Quantity received'}<input type="number" step="any" min={stock.type === 'restock' ? '0.01' : undefined} value={stock.quantity} onChange={(event) => setStock({ ...stock, quantity: event.target.value })} required /><small>{stock.type === 'adjustment' ? 'Use a negative number to reduce the recorded balance.' : 'This quantity will be added to available stock.'}</small></label>
       <label>{stock.type === 'adjustment' ? 'Reason for adjustment' : 'Delivery note (optional)'}<textarea value={stock.notes} onChange={(event) => setStock({ ...stock, notes: event.target.value })} required={stock.type === 'adjustment'} /></label>
-      <div className="logistics-modal-actions"><button type="button" className="secondary" onClick={closeDialog}>Cancel</button><button disabled={busy}>{stock.type === 'restock' ? 'Confirm Restock' : 'Save Adjustment'}</button></div>
+      <div className="logistics-modal-actions"><button type="button" className="secondary" onClick={closeDialog}>Cancel</button><button disabled={busy || !stock.itemId}>{stock.type === 'restock' ? 'Confirm Restock' : 'Save Adjustment'}</button></div>
     </form></div>, document.body) : null}
 
     {dialog === 'use' ? createPortal(<div className="modal-backdrop modal-backdrop-top" onClick={closeDialog}><form className="modal-card logistics-action-modal" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); onUse(useStock, closeDialog); }}>
@@ -150,6 +187,12 @@ export default function LogisticsPage({ token, onInventoryChange, onNotice, onEr
   const [showOutstanding, setShowOutstanding] = useState(false);
   const [activityOperation, setActivityOperation] = useState('');
   const [historySearch, setHistorySearch] = useState('');
+  const [lowStockSearch, setLowStockSearch] = useState('');
+  const [lowStockScope, setLowStockScope] = useState('');
+  const [orderScope, setOrderScope] = useState('');
+  const [orderSelection, setOrderSelection] = useState({});
+  const [orderQuantities, setOrderQuantities] = useState({});
+  const [exportingOrder, setExportingOrder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -168,6 +211,14 @@ export default function LogisticsPage({ token, onInventoryChange, onNotice, onEr
   const ownedScopes = data.permissions.full ? data.scopes.map(({ id }) => id) : data.permissions.scopes || [];
   const programScopes = data.scopes.filter((entry) => entry.kind === 'program' && ownedScopes.includes(entry.id));
   const canManageCenter = can('manageInventory') && ownedScopes.includes('center');
+  const lowStockItems = data.items.filter((item) => ownedScopes.includes(item.scope) && item.active !== false && item.isLowStock);
+  const normalizedLowStockSearch = lowStockSearch.trim().toLowerCase();
+  const visibleLowStockItems = lowStockItems.filter((item) => (!lowStockScope || item.scope === lowStockScope)
+    && (!normalizedLowStockSearch || `${item.name} ${item.category} ${item.location || ''} ${scopeName(data.scopes, item.scope)}`.toLowerCase().includes(normalizedLowStockSearch)));
+  const manageableLowStockItems = lowStockItems.filter(() => can('manageInventory'));
+  const orderItems = manageableLowStockItems.filter((item) => !orderScope || item.scope === orderScope);
+  const selectedOrderItems = manageableLowStockItems.filter((item) => orderSelection[item.id]);
+  const allOrderItemsSelected = orderItems.length > 0 && orderItems.every((item) => orderSelection[item.id]);
   const selectedActivity = data.activities.find((entry) => entry.id === movement.activityId);
   const dashboardActivity = data.activities.find((entry) => entry.id === openedActivityId);
   const openedActivity = activityDetail?.activity ? { ...activityDetail.activity, ...dashboardActivity } : dashboardActivity;
@@ -185,6 +236,9 @@ export default function LogisticsPage({ token, onInventoryChange, onNotice, onEr
     if (programScopes.length && !programScopes.some(({ id }) => id === programScope)) setProgramScope(programScopes[0].id);
     if (programScopes.length && !programScopes.some(({ id }) => id === activity.scope)) setActivity((current) => ({ ...current, scope: programScopes[0].id }));
   }, [data.scopes]);
+  useEffect(() => {
+    setOrderQuantities((current) => Object.fromEntries(lowStockItems.map((item) => [item.id, current[item.id] ?? (Number(item.suggestedOrder) > 0 ? item.suggestedOrder : '')])));
+  }, [data.items]);
 
   const submit = async (path, body, reset) => {
     setBusy(true);
@@ -206,11 +260,28 @@ export default function LogisticsPage({ token, onInventoryChange, onNotice, onEr
     try { await api(`/api/logistics/${id}`, { token, method: 'PUT', body }); await load(); onNotice?.('Item details updated.'); return true; }
     catch (error) { onError?.(error.message); return false; }
   };
+  const exportOrder = async () => {
+    if (!selectedOrderItems.length) return;
+    setExportingOrder(true);
+    try {
+      await downloadFile('/api/logistics/orders/export.xlsx', {
+        token,
+        method: 'POST',
+        filename: 'logistics-order.xlsx',
+        body: { items: selectedOrderItems.map((item) => ({ itemId: item.id, quantity: Number(orderQuantities[item.id]) })) }
+      });
+      onNotice?.('Order Excel generated successfully.');
+    } catch (error) {
+      onError?.(error.message);
+    } finally {
+      setExportingOrder(false);
+    }
+  };
 
   if (loading && !data.scopes.length) return <div className="panel"><p>Loading Logistics…</p></div>;
   return <div className="page-shell logistics-hub">
     <div className="page-header"><div><div className="panel-kicker">Operations</div><h2>Logistics</h2><p>Center stock, program stock, and activity usage are kept on separate pages while sharing one reliable movement history.</p></div></div>
-    <nav className="logistics-tabs" aria-label="Logistics sections">{tabs.filter(([id]) => id !== 'center' || ownedScopes.includes('center')).map(([id, label]) => <button key={id} type="button" className={tab === id ? 'active' : 'secondary'} onClick={() => setTab(id)}>{label}</button>)}</nav>
+    <nav className="logistics-tabs" aria-label="Logistics sections">{tabs.filter(([id]) => (id !== 'center' || ownedScopes.includes('center')) && (id !== 'orders' || can('manageInventory'))).map(([id, label]) => <button key={id} type="button" className={tab === id ? 'active' : 'secondary'} onClick={() => setTab(id)}>{label}{id === 'low-stock' && lowStockItems.length ? <span className="logistics-tab-count">{lowStockItems.length}</span> : null}</button>)}</nav>
 
     {tab === 'overview' ? <>
       <section className="stats-row logistics-stats"><article className="stat-card"><span>Total Items</span><strong>{data.items.filter((item) => ownedScopes.includes(item.scope)).length}</strong></article><article className="stat-card"><span>Currently Borrowed</span><strong>{formatted(data.items.filter((item) => ownedScopes.includes(item.scope)).reduce((sum, item) => sum + item.borrowedQuantity, 0))}</strong></article><article className="stat-card"><span>Low Stock</span><strong>{data.items.filter((item) => ownedScopes.includes(item.scope) && item.isLowStock).length}</strong></article><article className="stat-card"><span>Active Activities</span><strong>{data.activities.filter((entry) => ['active', 'outstanding', 'upcoming'].includes(entry.status)).length}</strong></article></section>
@@ -227,6 +298,40 @@ export default function LogisticsPage({ token, onInventoryChange, onNotice, onEr
       {programSection === 'inventory' ? <InventoryPage title="Program Inventory" explanation="This page contains only materials owned by this program. Materials for activities are handled from Activity Logistics." selectedScope={programScope} scopes={programScopes} items={data.items} canManage={can('manageInventory')} busy={busy} onCreate={(body, reset) => submit('/api/logistics', body, reset)} onSave={saveItem} onStock={(body, reset) => submit('/api/logistics/movements', body, reset)} onHistory={() => setTab('history')} /> : null}
       {programSection === 'activities' ? <section className="panel"><div className="section-head"><div><span className="panel-kicker">Activity logistics</span><h2>Program Activities</h2><p>Open an activity to record daily withdrawals and returns. Inventory setup is not shown here.</p></div>{can('manageActivities') ? <button type="button" onClick={() => { setActivity(emptyActivity(programScope)); setOpenedActivityId(''); setActivityOperation(''); setTab('activities'); }}>＋ Create Activity</button> : null}</div>{data.activities.some((entry) => entry.scope === programScope) ? <div className="activity-card-grid">{data.activities.filter((entry) => entry.scope === programScope).map((entry) => <button type="button" className="activity-card" key={entry.id} onClick={() => { setOpenedActivityId(entry.id); setActivityOperation(''); setMovement((current) => ({ ...current, activityId: entry.id, activityDate: '' })); setTab('activities'); }}><span className={`activity-status ${entry.status}`}>{entry.status}</span><h3>{entry.name}</h3><p>{entry.startDate} → {entry.endDate}</p><small>{entry.responsiblePerson || 'No responsible member assigned'}</small><div><strong>{entry.outstandingItemCount || entry.itemCount || 0}</strong> borrowed item types · <strong>{entry.outstandingQuantity}</strong> outstanding</div></button>)}</div> : <div className="repository-empty-state"><strong>No activities yet.</strong><span>Create an activity when the program needs materials for an event.</span></div>}</section> : null}
     </div> : <section className="panel"><h2>Program Logistics</h2><p>No program inventory has been assigned to your account.</p></section> : null}
+
+    {tab === 'low-stock' ? <section className="panel low-stock-page">
+      <div className="section-head">
+        <div><span className="panel-kicker">Inventory alerts</span><h2>Low Stock Items</h2><p>Review every item at or below its reorder point in one place.</p></div>
+        {can('manageInventory') && lowStockItems.length ? <button type="button" onClick={() => setTab('orders')}>Create Order</button> : null}
+      </div>
+      <div className="low-stock-filters">
+        <label>Search items<input type="search" value={lowStockSearch} onChange={(event) => setLowStockSearch(event.target.value)} placeholder="Item, category, location, or inventory" /></label>
+        <label>Inventory<select value={lowStockScope} onChange={(event) => setLowStockScope(event.target.value)}><option value="">All authorized inventories</option>{data.scopes.filter((entry) => ownedScopes.includes(entry.id)).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+      </div>
+      {visibleLowStockItems.length ? <div className="low-stock-grid">{visibleLowStockItems.map((item) => <article className="low-stock-card" key={item.id}>
+        <div className="low-stock-card-head"><div><span>{scopeName(data.scopes, item.scope)}</span><h3>{item.name}</h3></div><span className={`inventory-status ${item.stockStatus}`}>{item.stockStatus.replaceAll('-', ' ')}</span></div>
+        <div className="low-stock-levels"><span><small>Available</small><strong>{formatted(item.availableQuantity)} {item.unit}</strong></span><span><small>Reorder point</small><strong>{formatted(item.reorderPoint)} {item.unit}</strong></span><span><small>Suggested order</small><strong>{Number(item.suggestedOrder) > 0 ? `${formatted(item.suggestedOrder)} ${item.unit}` : 'Set quantity'}</strong></span></div>
+        <p>{item.location ? `Stored at ${item.location}.` : 'No storage location specified.'}{item.targetStock != null ? ` Target stock: ${formatted(item.targetStock)} ${item.unit}.` : ''}</p>
+      </article>)}</div> : <div className="repository-empty-state"><strong>{lowStockItems.length ? 'No matching low-stock items.' : 'All inventories are sufficiently stocked.'}</strong><span>{lowStockItems.length ? 'Change the search or inventory filter.' : 'Items will appear here when they reach their reorder point.'}</span></div>}
+    </section> : null}
+
+    {tab === 'orders' ? <section className="panel order-page">
+      <div className="section-head"><div><span className="panel-kicker">Purchasing</span><h2>Create Stock Order</h2><p>Select low-stock items, confirm the quantity needed, then generate an Excel order sheet.</p></div></div>
+      <div className="order-toolbar">
+        <label>Inventory<select value={orderScope} onChange={(event) => setOrderScope(event.target.value)}><option value="">All manageable inventories</option>{data.scopes.filter((entry) => ownedScopes.includes(entry.id)).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+        {orderItems.length ? <label className="order-select-all"><input type="checkbox" checked={allOrderItemsSelected} onChange={(event) => setOrderSelection((current) => ({ ...current, ...Object.fromEntries(orderItems.map((item) => [item.id, event.target.checked])) }))} />Select all shown</label> : null}
+        <button type="button" onClick={exportOrder} disabled={exportingOrder || !selectedOrderItems.length || selectedOrderItems.some((item) => !(Number(orderQuantities[item.id]) > 0))}>{exportingOrder ? 'Generating…' : `Generate Excel${selectedOrderItems.length ? ` (${selectedOrderItems.length})` : ''}`}</button>
+      </div>
+      {orderItems.length ? <div className="table-wrap order-table"><table><thead><tr><th>Select</th><th>Item</th><th>Inventory</th><th>Available</th><th>Reorder point</th><th>Suggested</th><th>Needed quantity</th></tr></thead><tbody>{orderItems.map((item) => <tr key={item.id} className={orderSelection[item.id] ? 'is-selected' : ''}>
+        <td><input aria-label={`Select ${item.name}`} type="checkbox" checked={Boolean(orderSelection[item.id])} onChange={(event) => setOrderSelection((current) => ({ ...current, [item.id]: event.target.checked }))} /></td>
+        <td><strong>{item.name}</strong><small>{item.location || item.category}</small></td>
+        <td>{scopeName(data.scopes, item.scope)}</td>
+        <td>{formatted(item.availableQuantity)} {item.unit}</td>
+        <td>{formatted(item.reorderPoint)} {item.unit}</td>
+        <td>{Number(item.suggestedOrder) > 0 ? `${formatted(item.suggestedOrder)} ${item.unit}` : 'Set quantity'}</td>
+        <td><label className="order-quantity"><span className="sr-only">Needed quantity for {item.name}</span><input type="number" min="0.01" step="any" value={orderQuantities[item.id] ?? ''} onChange={(event) => setOrderQuantities((current) => ({ ...current, [item.id]: event.target.value }))} disabled={!orderSelection[item.id]} /><span>{item.unit}</span></label></td>
+      </tr>)}</tbody></table></div> : <div className="repository-empty-state"><strong>No low-stock items available to order.</strong><span>Only active low-stock items from inventories you can manage appear here.</span></div>}
+    </section> : null}
 
     {tab === 'activities' ? <section className="panel activity-workspace"><div className="section-head"><div><span className="panel-kicker">Activity logistics</span><h2>{openedActivity ? openedActivity.name : 'Create Activity'}</h2><p>{openedActivity ? `${scopeName(data.scopes, openedActivity.scope)} · ${openedActivity.startDate} to ${openedActivity.endDate} · Responsible: ${openedActivity.responsiblePerson || 'Not assigned'}` : 'Set up the activity here. Materials are recorded only after the activity is created.'}</p></div>{openedActivity ? <button type="button" className="secondary" onClick={() => { setProgramScope(openedActivity.scope); setProgramSection('activities'); setOpenedActivityId(''); setActivityOperation(''); setTab('programs'); }}>Back to Activities</button> : null}</div>
       {!openedActivity && can('manageActivities') && programScopes.length ? <form className="logistics-inline-form" onSubmit={(event) => { event.preventDefault(); submit('/api/logistics/activities', activity, () => setActivity(emptyActivity(programScopes[0]?.id))); }}><label>Activity name<input value={activity.name} onChange={(event) => setActivity({ ...activity, name: event.target.value })} required /></label><label>Program<select value={activity.scope} onChange={(event) => setActivity({ ...activity, scope: event.target.value })}>{programScopes.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label><label>Start date<input type="date" value={activity.startDate} onChange={(event) => setActivity({ ...activity, startDate: event.target.value })} required /></label><label>End date<input type="date" value={activity.endDate} onChange={(event) => setActivity({ ...activity, endDate: event.target.value })} required /></label><label>Responsible person<input value={activity.responsiblePerson} onChange={(event) => setActivity({ ...activity, responsiblePerson: event.target.value })} /></label><label>Description<input value={activity.description} onChange={(event) => setActivity({ ...activity, description: event.target.value })} /></label><button disabled={busy}>Create Activity</button></form> : null}

@@ -3607,6 +3607,43 @@ th {
 .logistics-opening-quantity { max-width: 340px; }
 .logistics-opening-quantity small { color: #6a7880; font-weight: 400; }
 .logistics-modal-actions { display: flex; justify-content: flex-end; gap: 9px; padding-top: 4px; }
+.inventory-search-picker { position: relative; display: grid; gap: 9px; }
+.inventory-search-picker > label { display: grid; gap: 7px; }
+.inventory-search-results { max-height: 280px; display: grid; gap: 6px; padding: 7px; overflow: auto; border: 1px solid #dce3e6; border-radius: 12px; background: #fff; box-shadow: 0 12px 28px rgba(35, 52, 63, .1); }
+.inventory-search-results > button { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 12px; text-align: left; color: #34454e; border: 0; border-radius: 9px; background: #f7f9fa; box-shadow: none; }
+.inventory-search-results > button:hover { color: #821a20; background: #fff2f3; transform: none; }
+.inventory-search-results span { display: grid; gap: 3px; }
+.inventory-search-results small { color: #71808a; font-weight: 400; }
+.inventory-search-results em { color: #5f6f78; font-size: .8rem; font-style: normal; white-space: nowrap; }
+.inventory-search-results p { margin: 7px; color: #687780; }
+.inventory-search-selection { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #d9e5df; border-radius: 12px; background: #f2f9f5; }
+.inventory-search-selection > div { display: grid; gap: 3px; }
+.inventory-search-selection span { color: #61736a; font-size: .82rem; }
+.logistics-tab-count { min-width: 22px; margin-left: 7px; display: inline-grid; place-items: center; padding: 2px 6px; color: #8b1920; border-radius: 999px; background: #f8e2e4; font-size: .72rem; }
+.logistics-tabs button.active .logistics-tab-count { color: #9b1c23; background: #fff; }
+.low-stock-page, .order-page { display: grid; gap: 20px; }
+.low-stock-filters, .order-toolbar { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; padding: 15px; border: 1px solid #e1e6e9; border-radius: 14px; background: #f7f9fa; }
+.low-stock-filters label, .order-toolbar > label:not(.order-select-all) { min-width: 220px; display: grid; gap: 6px; }
+.low-stock-filters label:first-child { flex: 1; }
+.low-stock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+.low-stock-card { display: grid; gap: 14px; padding: 18px; border: 1px solid #eadcbf; border-radius: 16px; background: #fffdf8; box-shadow: 0 6px 18px rgba(62, 49, 26, .05); }
+.low-stock-card-head { display: flex; justify-content: space-between; gap: 12px; }
+.low-stock-card-head > div > span { color: #7a6b50; font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.low-stock-card h3 { margin: 4px 0 0; }
+.low-stock-card > p { margin: 0; color: #756a58; font-size: .84rem; }
+.low-stock-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.low-stock-levels > span { display: grid; gap: 4px; padding: 10px; border-radius: 10px; background: #f8f2e5; }
+.low-stock-levels small { color: #806d4c; font-size: .7rem; }
+.low-stock-levels strong { color: #4e402a; font-size: .9rem; }
+.order-toolbar { justify-content: space-between; }
+.order-toolbar button { margin-left: auto; }
+.order-select-all { display: inline-flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #fff; }
+.order-select-all input, .order-table input[type="checkbox"] { appearance: auto; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; border: initial; border-radius: 3px; background: initial; box-shadow: none; accent-color: #b12028; }
+.order-table tr.is-selected td { background: #fff8f8; }
+.order-quantity { min-width: 170px; display: flex; align-items: center; gap: 7px; }
+.order-quantity input { min-width: 95px; }
+.order-quantity > span:last-child { color: #66757e; font-size: .8rem; }
+.sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .program-logistics-head { margin-bottom: 0; }
 .program-section-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .program-section-switcher > button { min-height: 96px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 17px; text-align: left; color: #34454e; border: 1px solid #dfe5e8; border-radius: 15px; background: #fff; box-shadow: 0 5px 16px rgba(35, 52, 63, .04); }
@@ -3650,6 +3687,9 @@ th {
   .program-workspace-cards article { grid-template-columns: auto 1fr; }
   .program-workspace-cards article > strong { grid-column: 2; }
   .logistics-dashboard-metrics { grid-template-columns: 1fr; }
+  .low-stock-filters, .order-toolbar { align-items: stretch; flex-direction: column; }
+  .low-stock-filters label, .order-toolbar > label:not(.order-select-all), .order-toolbar button { width: 100%; margin-left: 0; }
+  .low-stock-levels { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 900px) {
@@ -6307,4 +6347,56 @@ textarea:focus-visible {
   .quete-calendar-shift.is-compact small {
     grid-column: 1 / -1;
   }
+}
+
+/* Keep presentation scoring readable and comfortable on touch screens. */
+.presentation-score-overlay .score-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.presentation-score-overlay .slider-field {
+  display: grid;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  gap: 12px;
+}
+.presentation-score-overlay .slider-head span {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.presentation-score-overlay .slider-head strong { flex-shrink: 0; }
+.presentation-score-overlay .slider-scale-button { min-height: 44px; }
+.presentation-score-overlay .slider-scale-button:focus-visible {
+  outline: 3px solid var(--red-deep);
+  outline-offset: 2px;
+}
+.presentation-score-footer {
+  position: sticky;
+  bottom: -24px;
+  background: #fff;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 600px) {
+  .presentation-score-overlay {
+    max-height: calc(100dvh - 24px);
+    padding: 16px;
+  }
+  .presentation-score-overlay .modal-head {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .presentation-score-overlay .modal-head > div { min-width: 0; }
+  .presentation-score-overlay .modal-head p { overflow-wrap: anywhere; }
+  .presentation-score-overlay .slider-scale {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .presentation-score-overlay .slider-field { padding: 12px; }
+  .presentation-score-footer { bottom: -16px; }
+  .presentation-score-footer button { width: 100%; min-height: 44px; }
 }

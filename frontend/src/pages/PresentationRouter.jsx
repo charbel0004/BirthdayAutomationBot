@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   AdminPresentationPage,
   MemberPresentationPage,
@@ -37,6 +38,8 @@ export default function PresentationRouter({
   onGenerateReport,
   onBack
 }) {
+  const [adminScoring, setAdminScoring] = useState(true);
+
   if (role === 'new recruit') {
     return (
       <RecruitPresentationPage
@@ -52,6 +55,8 @@ export default function PresentationRouter({
   if (role === 'admin') {
     return (
       <AdminPresentationPage
+        scoringOnly={adminScoring}
+        onChangeView={(scoring) => { setScoreOverlayOpen(false); setAdminScoring(scoring); }}
         token={token}
         onRefresh={onRefresh}
         presentation={presentation}

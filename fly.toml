@@ -28,3 +28,8 @@ primary_region = "fra"
 [[mounts]]
   source = "backend_data"
   destination = "/data"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"

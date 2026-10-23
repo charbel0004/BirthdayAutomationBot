@@ -23,7 +23,7 @@ export function PresentationScoreOverlay({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card presentation-score-overlay" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-card presentation-score-overlay" role="dialog" aria-modal="true" aria-label="Score presentation" onClick={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div>
             <h2>Score Presentation</h2>
@@ -35,7 +35,7 @@ export function PresentationScoreOverlay({
           <ChallengeDetails topic={presenter.topic} />
           <div className="score-grid">
             {criteria.map((criterion) => (
-              <label key={criterion.id} className="slider-field">
+              <div key={criterion.id} className="slider-field">
                 <div className="slider-head">
                   <span>{criterion.title}</span>
                   <strong>{form.scores[criterion.id] || 1}/10</strong>
@@ -46,21 +46,20 @@ export function PresentationScoreOverlay({
                     const value = index + 1;
                     const selected = Number(form.scores[criterion.id] || 1) === value;
                     return (
-                      <button key={value} type="button" className={`slider-scale-button ${selected ? 'is-selected' : ''}`} onClick={() => onChangeScore(criterion.id, value)}>
+                      <button key={value} type="button" aria-pressed={selected} aria-label={`${criterion.title}: ${value} out of 10`} className={`slider-scale-button ${selected ? 'is-selected' : ''}`} onClick={() => onChangeScore(criterion.id, value)}>
                         {value}
                       </button>
                     );
                   })}
                 </div>
-                <input type="range" min="1" max="10" step="1" value={form.scores[criterion.id] || 1} onChange={(event) => onChangeScore(criterion.id, event.target.value)} />
-              </label>
+              </div>
             ))}
           </div>
           <label>
             Comment
             <textarea value={form.comment} onChange={(event) => onChangeComment(event.target.value)} rows="4" />
           </label>
-          <button type="submit">Save Score</button>
+          <div className="presentation-score-footer"><button type="submit" disabled={!criteria.length}>Save Score</button></div>
         </form>
       </div>
     </div>
@@ -487,6 +486,8 @@ export function MemberPresentationPage({ presentation, scoreDraft, setScoreDraft
 
 export function AdminPresentationPage(props) {
   const {
+    scoringOnly = false,
+    onChangeView,
     token,
     onRefresh,
     presentation,
@@ -516,7 +517,9 @@ export function AdminPresentationPage(props) {
     onBack
   } = props;
 
+  const [search, setSearch] = useState('');
   const presentersWithTopics = presentation.presenters;
+  const filteredPresenters = presentersWithTopics.filter((item) => (item.user.displayName || '').toLowerCase().includes(search.trim().toLowerCase()));
   const selectedPresenter = presentersWithTopics.find((item) => item.user.id === scoreDraft.presenterId) || null;
   const [reportOverlayPresenterId, setReportOverlayPresenterId] = useState('');
   const selectedReportPresenter = presentersWithTopics.find((item) => item.user.id === reportOverlayPresenterId) || null;
@@ -543,10 +546,11 @@ export function AdminPresentationPage(props) {
       <div className="page-header">
         <div>
           <div className="panel-kicker">Presentations</div>
-          <h2>Presentation Administration</h2>
-          <p>Control topics, slots, grading criteria, scoring, and reports for the recruit presentation process.</p>
+          <h2>{scoringOnly ? 'Presentation Scoring' : 'Presentation Setup'}</h2>
+          <p>{scoringOnly ? 'Choose a presenter and score their interview presentation.' : 'Manage challenges, time slots, grading criteria, and reports.'}</p>
         </div>
         <div className="top-actions">
+          <button type="button" className="secondary" onClick={() => onChangeView(!scoringOnly)}>{scoringOnly ? 'Presentation Setup' : 'Open Scoring Page'}</button>
           <PresentationYearFilter years={presentation.availableYears} value={selectedYear} onChange={onChangeYear} />
         </div>
       </div>
@@ -558,6 +562,7 @@ export function AdminPresentationPage(props) {
           <article className="stat-card"><span>Average score</span><strong>{presentation.stats.averageScore}</strong></article>
         </div>
       </section>
+      {!scoringOnly && <>
       <ChallengeManagement token={token} onRefresh={onRefresh} />
       <section className="panel">
         <div className="section-head"><div><h2>Presentation Time Spots</h2><p>Add the presentation slots that new recruits can reserve.</p></div></div>
@@ -598,11 +603,16 @@ export function AdminPresentationPage(props) {
           <CriterionRow key={criterion.id} criterion={criterion} onSave={onUpdateCriterion} onDelete={onDeleteCriterion} />
         ))}</tbody></table></div>
       </section>
-      <section className="panel">
+      </>}
+      {scoringOnly && <section className="panel">
         <div className="section-head"><div><h2>Presenter Scoring</h2><p>Review presenters in a table, enable attempt two when needed, and open the scoring sheet from each row.</p></div></div>
-        <PresentationScoringTable presenters={presentersWithTopics} canToggleSecondAttempt onToggleSecondAttempt={onToggleSecondAttempt} onOpenScore={openScoreOverlay} />
+        <form className="filter-form presentation-search-form" onSubmit={(event) => event.preventDefault()}><input aria-label="Search presenter by name" placeholder="Search presenter by name" value={search} onChange={(event) => setSearch(event.target.value)} /></form>
+        {!filteredPresenters.length && <p>No presenters found.</p>}
+        <PresentationPresenterCards presenters={filteredPresenters} canToggleSecondAttempt onToggleSecondAttempt={onToggleSecondAttempt} onOpenScore={openScoreOverlay} />
+        <PresentationScoringTable presenters={filteredPresenters} canToggleSecondAttempt onToggleSecondAttempt={onToggleSecondAttempt} onOpenScore={openScoreOverlay} />
       </section>
-      <section className="panel">
+      }
+      {!scoringOnly && <section className="panel">
         <div className="section-head"><div><h2>Presentation attempt details</h2><p>Review weighted averages and individual criterion scores.</p></div><button type="button" onClick={onGenerateReport}>Refresh Report</button></div>
         <div className="table-wrap">
           <table>
@@ -623,6 +633,7 @@ export function AdminPresentationPage(props) {
           </table>
         </div>
       </section>
+      }
       <PresentationScoreOverlay isOpen={scoreOverlayOpen} presenter={selectedPresenter} criteria={presentation.activeCriteria} form={scoreDraft} onChangeScore={(criterionId, value) => setScoreDraft((current) => ({ ...current, scores: { ...current.scores, [criterionId]: value } }))} onChangeComment={(value) => setScoreDraft((current) => ({ ...current, comment: value }))} onClose={() => setScoreOverlayOpen(false)} onSubmit={onSaveEvaluation} />
       <PresentationReportOverlay isOpen={Boolean(selectedReportPresenter)} presenter={selectedReportPresenter} onClose={() => setReportOverlayPresenterId('')} />
     </div>
