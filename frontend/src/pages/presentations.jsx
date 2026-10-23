@@ -416,7 +416,14 @@ export function RecruitPresentationPage({ presentation, spinning, onSpin, onBook
 
 export function MemberPresentationPage({ presentation, scoreDraft, setScoreDraft, scoreOverlayOpen, setScoreOverlayOpen, onSaveEvaluation, onBack }) {
   const [search, setSearch] = useState('');
-  const presentersWithTopics = presentation.presenters;
+  const presentersWithTopics = [...presentation.presenters].sort((a, b) => {
+    const aTime = Date.parse(a.slot?.startAt);
+    const bTime = Date.parse(b.slot?.startAt);
+    const aScheduled = Number.isFinite(aTime);
+    const bScheduled = Number.isFinite(bTime);
+    if (aScheduled && bScheduled) return aTime - bTime;
+    return Number(bScheduled) - Number(aScheduled);
+  });
   const filteredPresenters = presentersWithTopics.filter((item) => (item.user.displayName || '').toLowerCase().includes(search.trim().toLowerCase()));
   const selectedPresenter = presentersWithTopics.find((item) => item.user.id === scoreDraft.presenterId) || null;
 
@@ -518,7 +525,14 @@ export function AdminPresentationPage(props) {
   } = props;
 
   const [search, setSearch] = useState('');
-  const presentersWithTopics = presentation.presenters;
+  const presentersWithTopics = [...presentation.presenters].sort((a, b) => {
+    const aTime = Date.parse(a.slot?.startAt);
+    const bTime = Date.parse(b.slot?.startAt);
+    const aScheduled = Number.isFinite(aTime);
+    const bScheduled = Number.isFinite(bTime);
+    if (aScheduled && bScheduled) return aTime - bTime;
+    return Number(bScheduled) - Number(aScheduled);
+  });
   const filteredPresenters = presentersWithTopics.filter((item) => (item.user.displayName || '').toLowerCase().includes(search.trim().toLowerCase()));
   const selectedPresenter = presentersWithTopics.find((item) => item.user.id === scoreDraft.presenterId) || null;
   const [reportOverlayPresenterId, setReportOverlayPresenterId] = useState('');
