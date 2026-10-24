@@ -6400,3 +6400,7 @@ textarea:focus-visible {
   .presentation-score-footer { bottom: -16px; }
   .presentation-score-footer button { width: 100%; min-height: 44px; }
 }
+
+.final-publication { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 150px; }
+.final-publication-help { color: #687888; line-height: 1.6; }
+@media print { .final-publication button, .final-publication-help { display: none; } }

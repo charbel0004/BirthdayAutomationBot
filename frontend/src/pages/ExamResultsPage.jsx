@@ -95,7 +95,7 @@ export default function ExamResultsPage({ token, onRefresh, role, users, results
       {isAdmin ? (
         <section className="panel">
           <div className="section-head">
-            <div><h2>Add an exam result</h2><p>Saving publishes the exam grade immediately. Only the combined final score has a visibility control.</p></div>
+            <div><h2>Add an exam result</h2><p>Saving publishes the exam grade immediately. Presentation and final results are published separately below.</p></div>
           </div>
           <form className="grid-form exam-result-form" onSubmit={onSubmit}>
             <label>
@@ -144,13 +144,13 @@ export default function ExamResultsPage({ token, onRefresh, role, users, results
       {isAdmin ? <AssessmentResults token={token} revision={results} onRefresh={onRefresh} /> : <>
         <section className="panel">
           <div className="section-head"><div><h2>Presentation</h2><p>Your weighted presentation result.</p></div></div>
-          {!assessment ? <p>{error ? 'Unable to load presentation result.' : 'Loading…'}</p> : assessment.presentation === null ? <p>Your presentation has not been graded yet.</p> : <div className="exam-result-score"><strong>{assessment.presentation}</strong><span>out of 100 · Attempt {assessment.selectedAttempt}</span></div>}
+          {!assessment ? <p>{error ? 'Unable to load presentation result.' : 'Loading…'}</p> : !assessment.presentationVisible ? <p>Your presentation result has not been released yet.</p> : assessment.presentation === null ? <p>Your presentation has not been graded yet.</p> : <div className="exam-result-score"><strong>{assessment.presentation}</strong><span>out of 100 · Attempt {assessment.selectedAttempt}</span></div>}
         </section>
         <section className="panel">
           <div className="section-head"><div><h2>Final Score</h2><p>Exam 40% + Presentation 40% + Center Commitment 20%.</p></div></div>
           {!assessment ? <p>{error ? 'Unable to load final score.' : 'Loading…'}</p> : !assessment.finalVisible ? <p>Your final score has not been released yet.</p> : assessment.total === null ? <p>Incomplete — awaiting {assessment.missing.join(', ')}.</p> : <>
             <div className="exam-result-score"><strong>{assessment.total}</strong><span>out of 100</span></div>
-            <p>Exam: {assessment.components.exam}/100 · Presentation: {assessment.components.presentation}/100 · Center Commitment: {assessment.components.commitment}/100</p>
+            <p>Exam: {assessment.components.exam}/100 · Presentation: {assessment.presentationVisible ? `${assessment.components.presentation}/100` : 'Not released'} · Center Commitment: {assessment.components.commitment}/100</p>
           </>}
         </section>
       </>}

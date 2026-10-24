@@ -83,6 +83,7 @@ async function assessmentReport(recruitId) {
       id: key, name: person.displayName || person.username, username: person.username,
       challenge: topic ? topic.challengeSnapshot?.title || 'Legacy presentations' : 'Unassigned', topic: topic?.title || null,
       reservation: slot ? { startAt: slot.startAt, endAt: slot.endAt } : null,
+      presentationVisible: person.presentationResultVisible === true,
       finalVisible: person.finalResultVisible === true, examId: exam ? String(exam._id) : null,
       commitmentHistory: commitment?.history || [],
       selectedAttempt, evaluatorCount: presentation.entries.length,
@@ -115,10 +116,17 @@ function assessmentRouter() {
     const { rows } = await assessmentReport(String(req.account._id));
     const row = rows[0];
     if (!row) fail('Recruit not found.', 404);
-    // Do not send hidden totals, contributions or commitment scores to the browser.
-    res.json({ presentation: row.components.presentation, selectedAttempt: row.selectedAttempt,
+    // Hidden presentation grades must also stay out of the final-score breakdown.
+    const components = { ...row.components };
+    const contributions = { ...row.contributions };
+    if (!row.presentationVisible) {
+      delete components.presentation;
+      delete contributions.presentation;
+    }
+    res.json({ presentationVisible: row.presentationVisible,
+      ...(row.presentationVisible ? { presentation: row.components.presentation, selectedAttempt: row.selectedAttempt } : {}),
       finalVisible: row.finalVisible,
-      ...(row.finalVisible ? { total: row.total, status: row.status, missing: row.missing, components: row.components, contributions: row.contributions } : {}) });
+      ...(row.finalVisible ? { total: row.total, status: row.status, missing: row.missing, components, contributions } : {}) });
   }));
   router.use(requireRole('admin'));
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } });
@@ -233,8 +241,29 @@ function assessmentRouter() {
     await commitments().updateOne({ recruitUserId }, { $set: { score, updatedAt: now() }, $setOnInsert: { createdAt: now() }, $push: { history: { score, at: now(), by: req.account.username } } }, { upsert: true });
     res.json({ ok: true });
   }));
+  router.patch('/recruits/:id/presentation-visibility', wrap(async (req, res) => {
+    if (typeof req.body.visible !== 'boolean') fail('Visibility must be true or false.');
+    const recruitId = id(req.params.id);
+    if (req.body.visible) {
+      const { rows } = await assessmentReport(req.params.id);
+      if (!rows.length) fail('Recruit not found.', 404);
+      if (rows[0].components.presentation === null) fail('Grade the presentation before publishing its result.', 409);
+    }
+    const result = await users().updateOne({ _id: recruitId, role: 'new recruit' }, {
+      $set: { presentationResultVisible: req.body.visible, updatedAt: now() },
+      $push: { presentationVisibilityHistory: { visible: req.body.visible, by: req.account.username, at: now() } }
+    });
+    if (!result.matchedCount) fail('Recruit not found.', 404);
+    res.json({ ok: true });
+  }));
   router.patch('/recruits/:id/final-visibility', wrap(async (req, res) => {
     if (typeof req.body.visible !== 'boolean') fail('Visibility must be true or false.');
+    if (req.body.visible) {
+      const report = await assessmentReport(req.params.id);
+      const recruit = report.rows[0];
+      if (!recruit) fail('Recruit not found.', 404);
+      if (recruit.total === null) fail(`Complete all components before publishing. Missing: ${recruit.missing.join(', ')}.`, 409);
+    }
     const result = await users().updateOne({ _id: id(req.params.id), role: 'new recruit' }, { $set: { finalResultVisible: req.body.visible, updatedAt: now() }, $push: { finalVisibilityHistory: { visible: req.body.visible, by: req.account.username, at: now() } } });
     if (!result.matchedCount) fail('Recruit not found.', 404);
     res.json({ ok: true });
@@ -243,7 +272,7 @@ function assessmentRouter() {
   router.get('/report/export', wrap(async (req, res) => {
     const report = await assessmentReport(req.query.recruitId);
     workbookResponse(res, {
-      Results: report.rows.map((row) => ({ Recruit: row.name, Username: row.username, Challenge: row.challenge, Topic: row.topic || 'Unassigned', Reservation: row.reservation?.startAt || 'Not booked', 'Exam /100': row.components.exam ?? 'Missing', 'Presentation /100': row.components.presentation ?? 'Missing', 'Commitment /100': row.components.commitment ?? 'Missing', 'Exam ×40%': row.contributions.exam ?? 'Missing', 'Presentation ×40%': row.contributions.presentation ?? 'Missing', 'Commitment ×20%': row.contributions.commitment ?? 'Missing', 'Final /100': row.total ?? 'Incomplete', Status: row.status, 'Selected attempt': row.selectedAttempt, Evaluators: row.evaluatorCount, 'Final score visible': row.finalVisible ? 'Yes' : 'No' })),
+      Results: report.rows.map((row) => ({ Recruit: row.name, Username: row.username, Challenge: row.challenge, Topic: row.topic || 'Unassigned', Reservation: row.reservation?.startAt || 'Not booked', 'Exam /100': row.components.exam ?? 'Missing', 'Presentation /100': row.components.presentation ?? 'Missing', 'Commitment /100': row.components.commitment ?? 'Missing', 'Exam ×40%': row.contributions.exam ?? 'Missing', 'Presentation ×40%': row.contributions.presentation ?? 'Missing', 'Commitment ×20%': row.contributions.commitment ?? 'Missing', 'Final /100': row.total ?? 'Incomplete', Status: row.status, 'Selected attempt': row.selectedAttempt, Evaluators: row.evaluatorCount, 'Presentation visible': row.presentationVisible ? 'Yes' : 'No', 'Final score visible': row.finalVisible ? 'Yes' : 'No' })),
       Evaluators: report.rows.flatMap((row) => row.evaluators.map((item) => ({ Recruit: row.name, Evaluator: item.name, Role: item.role, Attempt: item.attempt, 'Used in final': item.included ? 'Yes' : 'No', 'Score /100': item.score, Weight: item.weight, 'Score × weight': item.weightedScore }))),
       Method: [{ 'Exam weight': '40%', 'Presentation weight': '40%', 'Commitment weight': '20%', 'Admin evaluator weight': report.weights.admin, 'GA evaluator weight': report.weights.member, Formula: 'Presentation = sum(score × weight) / sum(weight). Final requires all three components. Enabled scored attempt 2 replaces attempt 1.' }]
     }, 'recruit-assessments.xlsx');
