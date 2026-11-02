@@ -52,6 +52,7 @@ const {
 
 const PORT = Number(process.env.PORT || 4000);
 const app = express();
+const startIdleShutdown = require('./idle-shutdown').installIdleShutdown(app);
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5173',
@@ -3858,7 +3859,8 @@ app.post('/api/birthdays/run-now', requireRole('admin'), async (req, res) => {
 async function startServer() {
   await connectToDatabase();
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
+    startIdleShutdown(server);
     if (process.env.BIRTHDAY_SCHEDULER_ENABLED !== 'false') startBirthdayScheduler();
     console.log(`API server listening on http://localhost:${PORT}`);
   });

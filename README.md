@@ -116,6 +116,7 @@ If you also want the default GitHub Pages domain to work during setup, add it to
 - The birthday scheduler runs in the backend process; Logistics monitoring and Excel reports are generated on demand in the website.
 - Production disables the in-process timer with `BIRTHDAY_SCHEDULER_ENABLED=false`.
 - `.github/workflows/birthday-check.yml` calls the protected birthday job at 00:00, 00:15, and 00:45 in `Asia/Beirut`, automatically following daylight-saving changes. Later checks are recovery attempts; MongoDB delivery guards prevent resending completed deliveries.
+- `IDLE_SHUTDOWN_SECONDS=120` adds a clean application exit after two idle minutes, waiting for active requests and excluding health probes. Fly uses its existing `on-failure` restart policy, so a successful idle exit stays stopped.
 - Requests wake the Fly machine. It stops again when idle; website visitors can also wake it at any time. The first request after sleep may take longer.
 - Set the same randomly generated `BIRTHDAY_JOB_TOKEN` in Fly secrets and GitHub repository Actions secrets. It only authorizes `/api/internal/birthdays/check`, not admin operations.
 - `GET` on that endpoint verifies credentials without sending; `POST` executes the check and returns a retryable HTTP 503 if delivery is incomplete.

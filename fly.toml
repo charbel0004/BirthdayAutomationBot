@@ -9,6 +9,7 @@ primary_region = "cdg"
   DATA_FILE = "/data/store.json"
   BOT_TIMEZONE = "Asia/Beirut"
   BIRTHDAY_SCHEDULER_ENABLED = "false"
+  IDLE_SHUTDOWN_SECONDS = "120"
 
 [http_service]
   internal_port = 4000
