@@ -1608,6 +1608,7 @@ app.post('/api/blood-drive/donors/public-interest/check-duplicate', async (req, 
   }
 });
 
+require('./birthday-job').registerBirthdayJob(app, runBirthdayCheck);
 app.use('/api', authMiddleware, requireAuthenticatedUser);
 app.use('/api/assessments', assessmentRouter());
 
@@ -3858,7 +3859,7 @@ async function startServer() {
   await connectToDatabase();
 
   app.listen(PORT, () => {
-    startBirthdayScheduler();
+    if (process.env.BIRTHDAY_SCHEDULER_ENABLED !== 'false') startBirthdayScheduler();
     console.log(`API server listening on http://localhost:${PORT}`);
   });
 }

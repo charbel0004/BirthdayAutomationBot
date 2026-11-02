@@ -78,7 +78,7 @@ The backend is prepared for Fly.io with:
 - explicit CORS allow-list support
 - a persistent `/data` volume for legacy bootstrap data
 - Telegram birthday settings persisted in MongoDB
-- one Fly machine kept running so the midnight scheduler can execute
+- one 512 MB Fly machine that starts on requests and stops when idle
 
 Create `backend/.env` from `backend/.env.example` and set real values for:
 
@@ -114,4 +114,18 @@ If you also want the default GitHub Pages domain to work during setup, add it to
 - Reusable and consumable stock supports borrowing, partial returns, consumption, loss, damage, restocking, and audited adjustments.
 - Admins assign Logistics actions and inventory scopes to each member from Users & Roles.
 - The birthday scheduler runs in the backend process; Logistics monitoring and Excel reports are generated on demand in the website.
-- If Fly scales to zero, a midnight timer cannot fire, so `min_machines_running = 1` is required.
+- Production disables the in-process timer with `BIRTHDAY_SCHEDULER_ENABLED=false`.
+- `.github/workflows/birthday-check.yml` calls the protected birthday job at 00:00, 00:15, and 00:45 in `Asia/Beirut`, automatically following daylight-saving changes. Later checks are recovery attempts; MongoDB delivery guards prevent resending completed deliveries.
+- Requests wake the Fly machine. It stops again when idle; website visitors can also wake it at any time. The first request after sleep may take longer.
+- Set the same randomly generated `BIRTHDAY_JOB_TOKEN` in Fly secrets and GitHub repository Actions secrets. It only authorizes `/api/internal/birthdays/check`, not admin operations.
+- `GET` on that endpoint verifies credentials without sending; `POST` executes the check and returns a retryable HTTP 503 if delivery is incomplete.
+- Manually dispatch **Daily birthday check** with `check_only=true` for a safe readiness test, or false to run today's delivery.
+- GitHub scheduled jobs can be delayed or dropped under load, so this is an around-midnight service, not an exact-time guarantee. Public repositories automatically disable schedules after 60 days without repository activity; keep the schedule active and monitor failed Actions runs.
+- Local development keeps the timer enabled unless explicitly disabled.
+
+## Cost controls
+
+- `fly.toml` uses `auto_stop_machines="stop"`, `min_machines_running=0`, and the existing `cdg` region. Deploy with `fly deploy --ha=false` to avoid creating a spare machine.
+- Keep the 1 GB data volume for legacy bootstrap safety. Stopped root filesystems and volumes remain billable; auto-stop does not mean zero metered usage.
+- Aim for total organization usage below $4/month to leave margin below the strictly-under-$5 waiver. Fly staff's May 2026 clarification limits that waiver to the original personal organization; it is not a permanent pricing guarantee.
+- Review the organization's Upcoming Invoice and Cost Explorer, including any other apps and services. Changes cannot refund prior usage or remove charges already accrued this month.

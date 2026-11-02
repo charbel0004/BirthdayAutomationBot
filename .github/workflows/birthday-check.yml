@@ -1,0 +1,40 @@
+name: Daily birthday check
+
+on:
+  schedule:
+    - cron: '0,15,45 0 * * *'
+      timezone: Asia/Beirut
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: Verify connectivity and credentials without sending messages
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: daily-birthday-check
+  cancel-in-progress: false
+
+jobs:
+  birthday-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake backend and check birthdays
+        env:
+          BIRTHDAY_JOB_TOKEN: ${{ secrets.BIRTHDAY_JOB_TOKEN }}
+          CHECK_ONLY: ${{ inputs.check_only || false }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BIRTHDAY_JOB_TOKEN" || { echo 'Missing BIRTHDAY_JOB_TOKEN secret'; exit 1; }
+          method=POST
+          if [ "$CHECK_ONLY" = true ]; then method=GET; fi
+          curl --silent --show-error --fail-with-body \
+            --request "$method" \
+            --header "Authorization: Bearer $BIRTHDAY_JOB_TOKEN" \
+            --connect-timeout 30 --max-time 120 \
+            --retry 3 --retry-delay 20 --retry-max-time 480 --retry-all-errors \
+            https://backend-hidden-fog-2243.fly.dev/api/internal/birthdays/check
